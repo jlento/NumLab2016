@@ -1,0 +1,588 @@
+#+LATEX_CLASS_OPTIONS: [12pt, a4paper]
+#+LATEX_HEADER: \input{exercise_header.tex}
+#+PROPERTY: header-args :mkdirp yes
+#+OPTIONS: toc:nil
+
+*LABORATORY COURSE IN NUMERICAL METEOROLOGY*\\
+*Exercise 1, Fri Jan 22 14:15-16:00 2016, E206*
+
+* Working with Linux command line
+
+The goal of this and the next two exercises is not only to teach how
+to work with a single application, OpenIFS. The more general goal is
+to start a process that transforms you from a casual command line user
+to a programmer that automates more complicated tasks, such as
+building OpenIFS, running a simulation experiment, or analyzing the
+results, by writing them into programs.  Depending on your start up
+level, this process may take a year or two, so do not panic if
+everything is not clear immediately.
+
+Automating a task or a workflow into a single program, usually a bash
+script or makefile, is important because it allows easy repetition of
+the task when needed. A well written program also reduces the risk of
+errors, and it also serves as documentation in case you need to share
+your workflow with someone else, or need to review it later. Imagine a
+situation where a referee returns your paper with compliments, but
+asks you to do a small refinement that in fact means running the whole
+experiment again, re-doing the analysis and re-drawing the figures in
+your papers. This should be easy. [[https://en.wikipedia.org/wiki/Reproducibility][Reproducibility]] is one of the corner
+stones of scientific research.
+
+I am an experienced bash programmer, so I use [[http://wiki.bash-hackers.org/syntax/pe][parameter expansions]],
+[[http://wiki.bash-hackers.org/syntax/expansion/globs][pathname expansions (globbing)]], [[http://wiki.bash-hackers.org/syntax/expansion/cmdsubst][command substitutions]], [[https://en.wikipedia.org/wiki/Redirection_(computing)][I/O
+redirections]], [[http://tldp.org/LDP/Bash-Beginners-Guide/html/sect_04_01.html][regular expressions]], [[http://wiki.bash-hackers.org/scripting/posparams][positional parameters]], programming
+constructs such as loops and functions, and what not in my example
+bash programs. If you can figure out how the examples work, that is
+already a good result. The programs that /you/ write do not need to
+use all these constructs.
+
+** Tools within the shell
+
+*** man
+
+Typing ~man COMMAND~, where ~COMMAND~ is the name of the command,
+e.g. ~pwd~, gives you access to it's manual pages. If you encounter a
+new command, or you already have an idea which command might suite the
+task that you wish to accomplish, the command's manual page is the
+first place to look for information. Manual pages describe exactly how
+a command works, what it's options do, give some usage examples, etc.
+
+Reading man pages takes a bit practice, but the pages are usually
+arranged in the standard fashion, and with little practice it becomes
+easier to find the necessary bits of information. The most useful
+commands while reading the man pages are maybe "next page" ~SPACE~,
+"previous page" ~b~, "to the beginning" ~p~, "to the end" ~G~, "quit"
+~q~, and "search" ~/~. The same commands are useful when you use
+~less~ to read regular text files.
+
+A note about search the command: after entering the search, man's
+pager less waits for the word to seacrh. The search string is actually
+a [[https://en.wikipedia.org/wiki/Regular_expression][regular expression]], so you may need to [[https://en.wikipedia.org/wiki/Escape_character][escape]] some characters. If
+you are searching the meaning of ~$_~ from bash's man pages, for
+example, you need to enter search string ~\$_~ after pressing the
+search command ~/~. For further details, see ~man less~.
+
+*** Bash command line, commands and functions
+
+One of the best approaches to learn how to unroll complex looking bash
+expressions to digestible chunks is to learn how bash actually
+evaluates a command line. Have a look at a nice concise text [[http://mywiki.wooledge.org/BashParser][BASH
+Parser]], for example. [[http://wiki.bash-hackers.org/start][Bash Hackers wiki]] is a nice place to start
+deepening your understanding of bash in general. Other resources are
+the [[http://tldp.org/LDP/Bash-Beginners-Guide/html/index.html][Bash Guide for Beginners]], the bash man pages, and Google, of
+course.
+
+The usual practice is to use command arguments and standard input
+stream (stdin) to feed input parameters and input data to
+commands. The commands then return values using standard output and
+standard error streams (stdout, stderr). Commands also return an exit
+value. Exit value zero means that the command was successful and
+everything else corresponds to an error, usually. You can catch exit
+values in many ways, the variable ~$$~ holds the exit value of the
+last command, for example.
+
+In this exercise, I use the term command interchangeably to refer to
+bash builtin commands, executable files used as commands (such as
+compiled programs and bash scripts) and bash functions. In practice,
+they all work identically to what comes to passing arguments or
+redirecting data streams.
+
+The general idea is that bash commands do a single thing, and that
+they do it well. The strength of I/O re-direction, command
+substitution, etc, is that they make it easy to pipe the output from
+one command to the next command's input without using temporary files.
+
+Experiment with the commands, their arguments and I/O re-directions
+using bash's command line in your terminal window!
+
+*** file, type and which
+
+If you are uncertain whether a certain command is actually a shell
+alias, bash builtin command, a bash function, or where in the bash
+command search path (environment variable PATH) the command comes
+from, etc, you can use commands ~type COMMAND~ and ~which COMMAND~ to
+help you out. Or, if you do not know a type of a file, you can try to
+use the command ~file FILE~ to help you guessing the file's type.
+
+** Desktop
+
+In practice, when writing a script, I have three windows open: one
+browser window with relevant instructions and Google searches, one
+Emacs editor window with the script in it, and one bash terminal
+window where I test different commands the script.
+
+*** Remote desktop
+
+When working with ~taito.csc.fi~, I usually open a NoMachine remote
+desktop session (see [[https://research.csc.fi/csc-guide-connecting-the-servers-of-csc][Taito user guide]] for details) and then open the
+windows in it. The remote desktop gives persistent desktop(s), and
+greatly improved response times for graphical applications that run in
+taito, which is physically located in Kajaani.
+
+If your local workstation does not have NoMachine installed, it is
+perfectly fine to open the browser and two ssh terminals (one shell
+terminal and one editor terminal) to taito on the local machine, too.
+
+** Github
+
+Git and GitHub are great. Use them for your projects.
+
+I use GitHub for all material which I write, and which I wish to keep
+and/or share with others. GitHub takes care of version control,
+backups, file sharing between the different computers I use, and
+sharing and collaboration with others, all in one go.
+
+The bash script and the makefile that we go through in this exercise,
+as all the course material that I have written, is in GitHub
+repository [[https://github.com/jlento/NumLab2016][jlento/NumLab2016]]. You can view the files directly using a
+web browser, or get the whole repository to your current directory
+in taito with all change history (large download) with
+
+#+BEGIN_SRC bash :results output drawer :dir /tmp
+module load git
+git clone https://github.com/jlento/NumLab2016.git
+#+END_SRC
+
+#+RESULTS:
+:RESULTS:
+:END:
+
+or, you can just download the files without the change history (small
+download) with
+
+#+BEGIN_SRC bash :results output drawer :dir /tmp
+url=https://github.com/jlento/NumLab2016/archive/master.zip
+curl -L -o NumLab2016-master.zip $url
+unzip NumLab2016-master.zip
+#+END_SRC
+
+#+RESULTS:
+:RESULTS:
+Archive:  NumLab2016-master.zip
+f0c42217b2263f56a9dc611177d92c35142fe9c9
+   creating: NumLab2016-master/
+  inflating: NumLab2016-master/.gitignore  
+  inflating: NumLab2016-master/README.md  
+   creating: NumLab2016-master/bin/
+  inflating: NumLab2016-master/bin/oifs_build_gnu_taito.bash  
+  inflating: NumLab2016-master/bin/oifs_env_gnu_taito.bash  
+  inflating: NumLab2016-master/bin/oifs_run_gnu_taito.bash  
+  inflating: NumLab2016-master/bin/oifs_run_scalability_gnu_taito.bash  
+  inflating: NumLab2016-master/bin/sov.bash  
+  inflating: NumLab2016-master/bin/sov_fun.bash  
+   creating: NumLab2016-master/doc/
+  inflating: NumLab2016-master/doc/BuildOpenIFS_exercise.pdf  
+  inflating: NumLab2016-master/doc/BuildOpenIFS_slide.html  
+  inflating: NumLab2016-master/doc/Intro_exercise.pdf  
+  inflating: NumLab2016-master/doc/Intro_slide.html  
+  inflating: NumLab2016-master/doc/RunOpenIFS_exercise.pdf  
+  inflating: NumLab2016-master/makefile  
+   creating: NumLab2016-master/src/
+  inflating: NumLab2016-master/src/BuildOpenIFS_exercise.org  
+  inflating: NumLab2016-master/src/BuildOpenIFS_slide.org  
+  inflating: NumLab2016-master/src/ComputeNode.svg  
+  inflating: NumLab2016-master/src/Intro_exercise.org  
+  inflating: NumLab2016-master/src/Intro_slide.org  
+  inflating: NumLab2016-master/src/ParallelFileSystem.svg  
+  inflating: NumLab2016-master/src/RunOpenIFS_exercise.org  
+  inflating: NumLab2016-master/src/RunOpenIFS_slide.org  
+  inflating: NumLab2016-master/src/SupercomputerArchitecture.svg  
+  inflating: NumLab2016-master/src/exercise_header.tex  
+  inflating: NumLab2016-master/src/graybox.tex  
+:END:
+
+As a side note, ~unzip~ command cannot read compressed ZIP file as an input
+stream -- it requires that the ZIP file is an actual file. This forces
+me to write the ZIP file to a temporary file instead of just piping it
+from ~curl~ to ~unzip~.
+
+** Directories in HPC
+
+There will be lot's of files, and even more when we start running the
+model and analysing the results, so it's a good idea to organize the
+files from the start. Plan now where you will put all the different
+kinds of files. Consult [[https://research.csc.fi/csc-guide-directories-and-data-storage-at-csc][CSC Computing environment user guide]].
+
+Disc space is a shared resource, so let us try to be conservative with
+the usage. Command ~saldo~ in taito shows the actual limits. Command
+~du~ with suitable options can be used to list the disc usage per
+directory.
+
+*Q:* For all the following file types
+
+- scripts that you write to automate and document tasks in ~taito~
+- temporary build files, object files, etc.
+- executables that you build and run in ~taito~
+- large model output files
+
+choose the right disc area
+
+- ~HOME~
+- ~TMPDIR~
+- ~WRKDIR~
+- ~USERAPPL~
+
+** Bash script example
+
+We will discuss how to run parallel programs in ~taito~ in detail in
+the third exercise. Let's now write a small function that gives us an
+overview of the state of the machine, i.e. print out which compute
+nodes are already full and which are available.
+
+The SLURM command that gives the status of the compute nodes is
+~sinfo~ (from [[https://research.csc.fi/taito-monitoring-the-load][Taito User Guide]]). Try it! Unfortunately, it is
+difficult to get a good overview from it's output. Let's write a small
+bash function ~sov~ (Sinfo OverView) that prints ascii graphics that
+visualize the status of the machine. Let us represent each node by a
+single character, and say that the letter is "-", "x", "X" or "?",
+corresponding to empty, partly occupied, fully occupied or "some
+other" state of the compute node, respectively.
+
+First I looked from the man pages of ~sinfo~ to see if there is
+already an option that would print more graphical
+output. Unfortunately I did not find one. However, I found options
+that allow me to control the output. (On the bottom of the man pages
+there is often a list of related commands. The man page of ~sinfo~
+points to a promising sounding command ~smap~, but for the sake of the
+exercise we will ignore that.)
+
+I will ask the ~sinfo~ to print the name and the status of each node
+on a single line with command (you can check the function of each
+option from the sinfo man page)
+
+#+BEGIN_SRC bash :results silent
+sinfo -N -h -o '%5n %T'
+#+END_SRC
+
+However, if I count the number of lines, or have a look at the sorted
+list, using a pipe to word count ~wc~ or sorting program ~sort~,
+
+#+BEGIN_SRC bash :results silent
+sinfo -N -h -o '%5n %T' | wc -l
+sinfo -N -h -o '%5n %T' | sort | less
+#+END_SRC
+
+I notice that a node is listed multiple times if it belongs to
+multiple partitions. Not a problem, I will just drop multiple
+identical lines with ~uniq~ command (~sort~ command with ~-u~ option
+would work equally well). Now my command looks like
+
+#+BEGIN_SRC bash :results silent
+sinfo -N -h -o '%5n %T' | uniq -w 5
+#+END_SRC
+
+The output is still not graphic, but this is easy to turn into ascii
+graphics. All I need to do is to print ~X~ for each line containing
+the word "allocate", and so on. The most common tools to filter text
+files are Sed and
+[[http://www.gnu.org/software/gawk/manual/gawk.html][Awk]] . They are
+programming languages by themselves, and optimized for treating text
+files (or streams). I will here use Awk which has language that is
+more complete and easier to program.
+
+In a nutshell, Awk runs it's program for each line, one line at the
+time. Awk program consists of a list of patterns, and related
+commands, enclosed between curly braces ~{}~. If a pattern matches the
+line in the input file, awk runs the related commands. Then it tries
+the next pattern until all patterns have been tested, and then it
+reads the next input line. Commands that do not have an associated
+pattern run for every line. Commands in the special patterns ~BEGIN~
+and ~END~ are run before and after the first and the last input lines
+are read, respectively.
+
+Now, piping the result of the previous command to awk program looks like this:
+
+#+BEGIN_SRC bash :results silent
+    sinfo -N -h -o '%5n %T' | uniq -w 5 | awk '
+      {s="?"}
+      /idle/{s="-"}
+      /mixed/{s="x"}
+      /allocated/{s="X"}
+      {printf s}
+      int(NR/10)==NR/10{printf " "}
+      int(NR/50)==NR/50{print ""}
+      int(NR/500)==NR/500{print ""}
+      END{print ""}'
+#+END_SRC
+
+Notice how bash waits for you to complete open quote.
+
+As a final touch, let us wrap the whole thing into a bash function
+~sov~, and insert the /positional parameters/ ~$@~ of the ~sov~
+function into the parameters of ~sinfo~:
+
+#+BEGIN_SRC bash :tangle ../bin/sov_fun.bash
+sov () {
+    sinfo -N -h -o '%5n %T' "$@" | uniq -w 5 | awk '
+      {s="?"}
+      /idle/{s="-"}
+      /mixed/{s="x"}
+      /allocated/{s="X"}
+      {printf s}
+      int(NR/10)==NR/10{printf " "}
+      int(NR/50)==NR/50{print ""}
+      int(NR/500)==NR/500{print ""}
+      END{print ""}'
+}
+#+END_SRC
+
+We can get the above lines defining the ~sov~ function from GitHub
+using ~curl~ command, and execute them in the current bash shell with
+
+#+BEGIN_SRC bash :results silent
+url=https://raw.githubusercontent.com/jlento/NumLab2016/master/bin
+source <(curl -s ${url}/sov_fun.bash)
+#+END_SRC
+
+which in practice "imports" the function ~sov~ into your current
+shell, and you can use it like a regular command.
+
+*Q:* Describe what /process substitution/ ~<(...)~ does?
+
+*Q:* See the man page of curl. What related commands does it list?
+
+*** Shebang
+
+Characters ~#!~ at the beginning of a file are called shebang. They
+are followed by the command that should be used to execute the
+following file. Shebang makes it possible to call the script as if it
+were a stand-alone program, with ~COMMAND~, instead of explicitly
+calling the interpreter, with ~bash COMMAND~, for
+example. Additionally, the user needs to have the execution
+permissions for the script to run it as a command, of course. See
+[[https://wiki.archlinux.org/index.php/File_permissions_and_attributes][Linux file permissions]], and command ~ls -l~ and ~chmod~. Personally, I
+often run the scripts explicitly under the interpreter, and take
+shebang more as a documentation.
+
+For example, you can put
+
+#+BEGIN_SRC bash
+#!/usr/bin/env bash
+#+END_SRC
+
+as the first line of your bash programs, or for Python programs, just
+replace ~bash~ with ~python~, and so on.
+
+For more details, please have a look at [[https://en.wikipedia.org/wiki/Shebang_(Unix)][Shebang Wikipedia page]].
+
+** Make in general
+
+Personally I think of makefiles as a language which is one abstraction
+level above the bash scripts. If you are struggling to understand bash
+scripts, you can take the following makefile chapters lighter, and
+return to them later when you start feeling confident with bash
+scripts.
+
+*** The usage
+
+Software build process is most often automated using
+make. Unfortunately it is not often recognized that make is a capable
+tool for other work-flow type task, too. One such example use is file
+conversions that we will encounter later in this course in the post
+processing of the OpenIFS model output files.
+
+*** Makefiles declare
+
+You can think of make as an interpreter that interprets makefiles
+whereas you can think of bash as an interpreter that interprets bash
+scripts. However, make uses fundamentally different language than
+/imperative/ languages, such as bash or python. The makefiles
+/declare/ how different files depend on each other, instead of just
+listing which commands should be run one after another. It is a higher
+level of abstraction, which allows for example automatic
+parallelization of make programs. On the other hand, makefiles can be
+more difficult to reason in the beginning, especially if you are not
+familiar with /functional programming/.
+
+*** How to understand makefiles
+
+Make command takes basically two inputs, the *goals* and the
+*rules*. The goals are the files you ask make to produce, and the
+rules define from which files to make the goals and with which
+commands.
+
+Often, when a makefile is also used to describe a project or task,
+it contains both the goals and rules. However, make treats any
+non-option command line arguments as goals that override the default
+goals in the makefile. We will explore that feature later in this
+exercise.
+
+- [[http://www.gnu.org/software/make/manual/make.html][GNU make]]
+
+** Makefile example
+
+As an example, let us have a look at the [[https://raw.githubusercontent.com/jlento/NumLab2016/master/makefile][makefile]] that I use to build
+the exercise PDFs, HTML lecture slides, and extract the bash scripts,
+from the Org-mode source files.
+
+First I define the shell in which make should execute the commands. I
+choose to override the default shell ~/bin/sh~, because I want that
+each shell that make opens to read my bash initialization file
+~${HOME}/.bash_profile~. (You need to read the bash man page like a
+lawyer to figure out which initialization files Bash reads with
+different invocations.)
+
+#+BEGIN_SRC makefile -n :tangle ../makefile
+SHELL    = /bin/bash
+#+END_SRC
+
+Next, I define the files I wish to make (lines 2-4), and the Emacs
+functions that compile them from the corresponding Org-mode source
+files(lines 5-6):
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+DOCS     = Intro_slide.html         Intro_exercise.pdf \
+           BuildOpenIFS_slide.html  BuildOpenIFS_exercise.pdf \
+           RunOpenIFS_slide.html    RunOpenIFS_exercise.pdf
+FUN_pdf  = org-latex-export-to-pdf
+FUN_html = org-reveal-export-to-html
+#+END_SRC
+
+Make needs to know where to find all the different kinds of files, if
+they are not in the current directory. You can set a special variable
+~VPATH~ or use ~vpath~ directive for more fine grained control, as
+below:
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+vpath %.org  src
+vpath %.html doc
+vpath %.pdf  doc
+vpath %.bash bin
+#+END_SRC
+
+The next block is slightly less frequently encountered multi-line
+definition (but I find them really neat). The first line of the block
+is the compile command, and the next two lines just remove the
+intermediate ~.tex~ files and move the compiled PDF and HTML documents
+to the proper sub-directory. A prettier solution would be to instruct
+Emacs to put the files into the right places right away, thus avoiding
+the ~rm~ and ~mv~ altogether, but I am just beginning to learn
+Emacs-Lisp myself. Consider yourselves saved.
+
+The block takes two arguments, ~$1~ and ~$2~, the name of the Emacs
+Org-mode source file and the target file suffix. Notice how the
+variable name ~FUN_*~ is computed, to reference the correct variable
+defined on lines 5-6.
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+define compile
+emacs $1 --batch -u $(USER) -f $(FUN_$2) -f org-babel-tangle --kill
+rm -f $(1:.org=.tex)
+mv $(1:.org=.$2) doc/
+endef
+#+END_SRC
+
+All regular targets in makefile are files by default. Special target
+~.PHONY~ tells make that ~all~ is not a file that it should make.
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+.PHONY : all
+#+END_SRC
+
+Makefile works by reading in the whole makefile first. If the user has
+not specified a target on the command line, make chooses the first
+regular target as the main goal to make. Using phony target ~all~ as
+default target is the standard. Here we see that ~all~ depends on all
+documents, which make now proceeds to (re-)make, if they are missing,
+or any of their dependencies have changed. /Figuring out the default
+goal is the place to start if you are reading an unfamiliar makefile./
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+all : $(DOCS)
+#+END_SRC
+
+In general, everything before the colon are is targets, and everything
+after it are their dependencies.
+
+The next lines define two pattern rules. Anytime we need a ~.html~ or
+~.pdf~ file, we can make it from the corresponding ~.org~ file with
+the defined command, which here refers to the multi-line variable,
+that is used as a function. A smiley is appropriate here?
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+%.html : %.org
+	$(call compile,$<,html)
+%.pdf  : %.org
+	$(call compile,$<,pdf)
+#+END_SRC
+
+Notice, the commands in the rule are prefixed by TAB character (even
+make is not perfect).
+
+The makefile itself is compiled from the source of this document,
+~src/Intro_exercise.org~! If there is a rule for building the
+makefile, and it needs re-building, make will automatically re-build
+the makefile and then re-read and execute it.
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+makefile : Intro_exercise.org
+	emacs $< --batch -u $(USER) -f org-babel-tangle --kill
+#+END_SRC
+
+If you try to run this makefile, it will most likely not work because
+I have somewhat customized Emacs configuration. Packaging a project so
+that it is easy for others to compile is an interesting task of it's
+own, for which there nowadays exist tools such as virtual machines,
+containers and configuration management frameworks, but that is a
+different story (and this one is already getting lengthy).
+
+Notice, this makefile is not the complete description of the project,
+because the explicit names of the bash script targets are missing, for
+example. I have chosen to tangle (extract) all the bash script files
+from the Org-mode sources at the same time I weave (compile) the PDF
+and HTML files. This loosely corresponds to the choice that is often
+made in the makefiles that compile Fortran 90 modules. In Fortran 90
+makefiles one usually refers only to the object files, and implicitly
+relies on the compiler to produce the corresponding module files.
+
+*Q:* Why is it OK not to refer to the Fortran module files ~.mod~
+     explicitly in the Fortran 90 makefiles? If you are not familiar
+     with Fortran 90, skip this question.
+
+** Suggested exercises
+
+*** Bash script as a command
+
+Wrap the ~sov~ function into an executable script, save it into file
+~$USERAPPL/bin/sov~, give it execute permissions with ~chmod~, and add
+the directory to PATH environment variable. Command ~sov~ should now
+work like any other command.
+
+*Q:* When you next time log in, is the directory ~$USERAPPL/bin~ in
+     your command search path? Can you do something about it, and
+     should you?
+
+Please pay attention on how you work with command line and text
+editor. How do you go to the beginning or to the end of line, how do
+you delete the rest of the line, etc? Do you Repeat Yourself, do you
+hit cursor or delete keys multiple times unnecessarily?
+
+*** Filename conversion command
+
+Write a command that lists all the file names in the current directory
+that have a suffix ~.bash~ but so that the suffix is changed to
+~.txt~. Tip: Pipe the result of ~ls~ + some argument to
+
+#+BEGIN_SRC bash
+sed 's/\.org$/\.pdf/'
+#+END_SRC
+
+Virtual extra code golf points are awarded for alternative solution in
+which the files listed by ~ls~ command are read into an array, which
+then is echoed on screen with the names changed using parameter
+expansion.
+
+*** Makefile
+
+Write a makefile containing a single rule, how to generate files with
+suffix ~.txt~ from files with suffix ~.bash~ by appending a comment
+character ~#~ and space at the beginning of each line. Tip: Sed
+program that adds the characters at the beginning of the file is
+
+#+BEGIN_SRC bash
+'s/^/# /'
+#+END_SRC
+
+Go to a directory with some bash files. Run the makefile you wrote,
+generating the make command line arguments (make goals) with the file
+name conversion command you wrote earlier, using command substitution.

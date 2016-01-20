@@ -1,0 +1,82 @@
+#+TITLE: Building OpenIFS
+#+DATE: Jan 29, 2016
+#+AUTHOR:
+#+EMAIL: juha.lento@csc.fi
+#+REVEAL_THEME: simple
+#+OPTIONS: toc:nil num:nil reveal_single_file:t
+
+* Building applications in general
+
+** Single source program
+
+#+BEGIN_EXAMPLE
+app.f90  --(compile)-->  app.o  --(link)-->  app
+#+END_EXAMPLE
+
+Programmer writes a source code file, which compiler compiles into
+an object file, which linker links into an executable program.
+
+(Does not exist in practice.)
+
+** Multiple sources and object files
+
+#+BEGIN_EXAMPLE
+main.f90  --(compile)-->  main.o  --\
+sub1.f90  --(compile)-->  sub1.o  ---(link)-->  app
+sub2.c    --(compile)-->  sub2.o  --/
+#+END_EXAMPLE
+
+Programs are composed from multiple sources.
+
+** Header files
+
+#+BEGIN_EXAMPLE
+main.f90 sub1.mod --(compile)-->  main.o  --\
+sub1.f90          --(compile)-->  sub1.o  ---(link)-->  app
+sub2.c            --(compile)-->  sub2.o  --/
+#+END_EXAMPLE
+
+- compiler checks the interfaces using header files
+- used at compile time
+- Fortran 90: ~sub1.mod~, C: ~sub2.h~
+
+** Libraries
+
+#+BEGIN_EXAMPLE
+main.f90  --(compile)-->  main.o  --\
+                  libmy.a(sub1.o) ---(link)-->  app
+                  libmy.a(sub2.o) --/
+#+END_EXAMPLE
+
+Related and re-usable object files are often grouped into
+libraries. Often somebody else has written the library!
+
+** Compiler needs
+
+- a source file
+- interfaces to objects that the source refers to
+- options to tell which kind of object file to produce
+
+** Linker needs
+
+- all the referenced objects (maybe in libraries)
+- options to tell which kind of executable to produce
+
+** Static and dynamic linking
+
+- static executable :: library objects are included into the executable at link time
+- dynamic linking :: library objects are loaded at runtime
+
+** Shared and static object libraries
+
+Objects that are suitable for static linking are in libraries named
+~lib*.a~, and objects suitable for dynamic linking are in libraries named ~lib*.so~.
+
+** Runtime loader
+
+- needs to find the libraries!
+- checks if the locations of the so-libraries are hard coded into the
+  executable, see [[https://en.wikipedia.org/wiki/Rpath][rpath]]
+- searches so-libraries from paths in environment variable
+  ~LD_LIBRARY_PATH~
+- searches some standard places defined in ~/etc/ld*~ files

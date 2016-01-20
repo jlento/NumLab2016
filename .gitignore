@@ -1,0 +1,8 @@
+*~
+*.hi
+*.o
+*.tex
+!graybox.tex
+!exercise_header.tex
+*.log
+abspicpaths

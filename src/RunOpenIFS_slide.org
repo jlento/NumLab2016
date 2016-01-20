@@ -1,0 +1,170 @@
+#+TITLE: NumLab 2016
+#+DATE: Feb 5, 2016
+#+AUTHOR:
+#+EMAIL: juha.lento@csc.fi
+#+REVEAL_THEME: simple
+#+OPTIONS: toc:nil num:nil reveal_single_file:t
+
+* Running parallel programs on a supercomputer
+
+** Running jobs on compute nodes
+
+#+CAPTION: Users log in into one of the LOGIN nodes. How to make use of the COMPUTE NODES?
+[[file:SupercomputerArchitecture.svg]]
+
+** Parallel program launcher
+
+- launches a program (the instance of the program, a process), or
+  multiple instances of a program (SPMD), or multiple instances of
+  multiple programs (MPMD), on a compute node or compute nodes
+- Message Passing Interface (MPI) library provides a way for the
+  program instances (MPI tasks) to communicate
+- common job launchers are `mpirun`, `mpiexec`, `srun`, and `aprun`.
+
+** Batch queue system
+
+The efficient use of the supercomputer resources is achieved using a batch
+queue system (job scheduler), which:
+
+1. Allocates resources
+2. Integrates with the MPI job launcher
+
+Although it may first feel like an extra step, it actually automates a
+lot of work.
+
+** Usage policy
+
+- fair and efficient use of resources
+- defines which kind of jobs are run on the machine
+- implemented using batch queue system
+- different queues, ~ called partitions in SLURM, for different
+  kind of jobs
+- queues can have different priorities
+- typically small jobs, with small number of cores and short
+  runtime, start sooner
+
+** Interacting with the job scheduler?
+
+- through batch queue system commands, such as `srun`, `sbatch` and `squeue`
+  (SLURM), and batch job scripts
+
+#+BEGIN_SRC bash :results output drawer
+squeue | head
+sinfo -s
+scontrol show partition test
+#+END_SRC
+
+#+RESULTS:
+:RESULTS:
+JOBID       USER     ACCOUNT           NAME     REASON   START_TIME     END_TIME  TIME_LEFT NODES CPUS   PRIORITY
+8196472     estevez  csc             mumax3 AssocMaxJo          N/A 2016-01-29T1 14-00:00:00     1 1        914
+8196473     estevez  csc             mumax3 AssocMaxJo          N/A 2016-01-29T1 14-00:00:00     1 1        914
+8196474     estevez  csc             mumax3 AssocMaxJo          N/A 2016-01-29T1 14-00:00:00     1 1        914
+8196602     estevez  csc             mumax3 AssocMaxJo          N/A 2016-01-29T1 14-00:00:00     1 1        914
+8196603     estevez  csc             mumax3 AssocMaxJo          N/A 2016-01-29T1 14-00:00:00     1 1        914
+8196645     estevez  csc             mumax3 AssocMaxJo          N/A 2016-01-29T1 14-00:00:00     1 1        914
+8196646     estevez  csc             mumax3 AssocMaxJo          N/A 2016-01-29T1 14-00:00:00     1 1        914
+8196647     estevez  csc             mumax3 AssocMaxJo          N/A 2016-01-29T1 14-00:00:00     1 1        914
+7809241     hatavuor csc      dft-P-triph_D  Resources          N/A 2016-01-20T1 7-00:00:00     1 8        834
+PARTITION AVAIL  TIMELIMIT   NODES(A/I/O/T)  NODELIST
+serial*      up 3-00:00:00      858/8/1/867  c[3-304,309-440,449-474,477-478,579-983]
+parallel     up 3-00:00:00      858/8/1/867  c[3-304,309-440,449-474,477-478,579-983]
+longrun      up 14-00:00:0      854/8/1/863  c[3-304,313-440,449-474,477-478,579-983]
+test         up      30:00          1/3/0/4  c[1-2,984-985]
+hugemem      up 7-00:00:00          2/0/0/2  c[577-578]
+PartitionName=test
+   AllowGroups=ALL AllowAccounts=ALL AllowQos=ALL
+   AllocNodes=ALL Default=NO
+   DefaultTime=00:05:00 DisableRootJobs=NO GraceTime=0 Hidden=NO
+   MaxNodes=2 MaxTime=00:30:00 MinNodes=1 LLN=NO MaxCPUsPerNode=UNLIMITED
+   Nodes=c[1,2,984,985]
+   Priority=15 RootOnly=NO ReqResv=NO Shared=NO PreemptMode=OFF
+   State=UP TotalCPUs=80 TotalNodes=4 SelectTypeParameters=N/A
+   DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED
+
+:END:
+
+** Job script
+
+- prepares the environment for the program, copies input files to
+  run directory, etc.
+- launches the application on the compute nodes
+- *Batch* job script, in addition, defines the requested resources:
+  the number of cores, the amount of memory, computing time, etc.
+
+** Batch jobs
+
+- the default way of submitting large parallel jobs
+- the user writes a batch job script and gives it to the batch queue system
+- job scheduler executes the script when the requested
+  resources become available
+- stdin, stdout and stderr are connected to files
+
+** Example batch job script
+
+#+BEGIN_SRC bash :results silent 
+#!/bin/bash
+#SBATCH -n 4 -t 5 -p test
+export CURDIR=${SLURM_SUBMIT_DIR}
+export EXE=/path/to/myexe
+srun ${EXE}
+#+END_SRC
+
+** Interactive batch jobs
+
+- A useful way to run small test, check that everything is set up
+  properly before the large runs, etc.
+- the user runs the job launcher directly (not really)
+- one can think that the queue system actually makes a job script on
+  the fly, and then proceeds as usual
+- stdin, stdout and stderr are connected to the terminal
+
+** What does the job scheduler *actually* do?
+
+1. reads the resource requests from the batch job file
+2. puts the job into a batch job queue
+3. reserves the required resources when they become available
+4. sets some environment variables and executes the batch
+   job script (a single sequential shell script!)
+5. waits until the script finishes and releases resources
+
+** Two ways to write a job script
+
+1. a shell script prepares input files, writes a minimal batch job
+   script, and then submits it
+2. everything as a single *batch* job script
+
+** A shell script generating a minimal batch job script
+
+- if setting up the environment requires lot's of file copying,
+  conversions, e.g. sequential I/O or other sequential steps
+- if the same script is also used to start interactive jobs (with
+  minimal modifications)
+
+* Supercomputers are individuals
+
+** Taito and Sisu
+
+- the intended usage profile is different
+- the basic unit of resource is a processor core in taito,
+  and a compute node in sisu
+- in taito the job scheduler (SLURM) and job launcher `srun`
+  are tightly integrated
+- in sisu the user uses SLURM job scheduler to reserve nodes, and
+  then tells ALPS `aprun` how to place the processes in the nodes
+
+* Questions?
+
+** Further reading
+
+More details and examples in
+
+- [[https://research.csc.fi/csc-guide][CSC Environment User Guide]]
+- [[https://research.csc.fi/taito-user-guide][Taito User Guide]]
+- [[https://research.csc.fi/sisu-user-guide)][Sisu User Guide]]
+
+#+BEGIN_SRC bash :results silent
+man sbatch
+man srun
+#+END_SRC
+

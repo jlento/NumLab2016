@@ -1,0 +1,235 @@
+#+OPTIONS: toc:nil
+#+LATEX_CLASS_OPTIONS: [12pt, a4paper]
+#+LATEX_HEADER: \input{exercise_header.tex}
+#+BIND: org-export-publishing-directory "../doc"
+
+*LABORATORY COURSE IN NUMERICAL METEOROLOGY*\\
+*Exercise 3, Fri Feb 5 14:15-16:00 2016, E206*
+
+* Running OpenIFS
+
+** Running batch jobs
+
+Large computing servers use batch queue systems to schedule and run
+computing jobs (batch jobs) from multiple users. Taito uses [[https://computing.llnl.gov/linux/slurm/][SLURM]]
+batch queue system.
+
+User writes a batch job as a shell script, and then submits the job
+script to the batch queue system. Batch system then schedules and runs
+the job according to the user's resource requests and queue policies.
+
+When the batch job system finds a suitable slot for the user's job, it
+first reserves the resources to the user according to the user's
+request. Then, it executes one copy of the job script until the script
+finishes or it runs out of the reserved time. The batch system charges
+user's account (project) for the reserved CPU resources, whether the
+job actually uses them or not, for the time that the script is
+running.
+
+** Acceptance test
+
+After building an application, we usually first wish to check that
+the built binary gives correct results. Let's write a batch job script
+that runs OpenIFS Acceptance test,
+[[https://software.ecmwf.int/wiki/display/OIFS/Testing+the+installation]].
+
+You can download the batch job script template from
+[[https://raw.githubusercontent.com/jlento/NumLab2016/master/bin/oifs_run_gnu_taito.bash]]
+for viewing and editing.
+
+SLURM batch jobs must begin with shebang.
+
+#+BEGIN_SRC bash -n :tangle ../bin/oifs_run_gnu_taito.bash
+#!/bin/bash
+#+END_SRC
+
+SLURM reads the job resource requests from the lines that begin with
+~#SBATCH~ comment, and are at the beginning of the job script
+file. Command line arguments to job submission command ~sbatch~ can
+override resource requests in the job script file.
+
+*Q:* Why it is usually better to define the resource requests in the
+     job script file rather than in the command line?
+
+Here we request 2 MPI tasks ~-n 2~ and 2 CPU cores for each task ~-c
+2~, i.e. a total of 4 CPU cores. We reserve the resources for 10
+minutes ~-t 10~, and submit the job to test partition (queue) ~-p
+test~.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_run_gnu_taito.bash
+#SBATCH -n 2 -c 2 -t 10 -p test
+#+END_SRC
+
+Next, the job script loads the same environment that was loaded at the
+build time by executing the commands from the environment set up file.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_run_gnu_taito.bash
+url=https://raw.githubusercontent.com/jlento/NumLab2016/master/bin
+source <(curl -s ${url}/oifs_env_gnu_taito.bash)
+#+END_SRC
+
+*Q:* Why it would actually be better to use a local copy of the
+     environment setup file instead of loading it from GitHub?
+
+Next, we unpack the test case from the OpenIFS source package into the
+work directory, and enter the run directory containing the input files.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_run_gnu_taito.bash
+sdir=${USERAPPL}/oifs/src
+ver=oifs38r1v04
+cd ${WRKDIR}
+tar xf --strip-components=1 ${sdir}/${ver}.tar.gz ${ver}/t21test
+cd t21test
+#+END_SRC
+
+We need to modify some namelist parameters in the ~fort.4~ file for
+the acceptance test. Now, this task of modifying a template file is
+something we need to repeat often, and thus should try to automate. Of
+course we could just open the file in an editor before submitting the
+job, search for the parameters from the file, change their values,
+save the modified file, and close the editor. After a while that
+becomes tedious, and is error prone as we need to be extra careful to
+set the parameters both in the job file and the input file so that
+they match.
+
+Here I define a function that takes the list of parameters to modify
+and their values as arguments, see the actual call below the function
+definition, and modifies the ~fort.4~ file.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_run_gnu_taito.bash
+fixfort4() {
+    local name value prog=""
+    for arg in "$@"; do
+        name="${arg%%=*}"
+	value=$(printf %q "${arg#*=}")
+	value="${value//\//\/}"
+        prog="s/(^|[ ,])(${name} *=)[^,]*/\\1\\2 ${value}/"$'\n'"$prog"
+    done
+    sed -i -r -e "$prog" fort.4
+}
+fixfort4 NPROC=${SLURM_NTASKS} LREFOUT=true NSTOP=144
+#+END_SRC
+
+Congratulations, if you can figure out how this function exactly
+works!  Note, although I'm trying to avoid some of the most trivial
+quotation issues, this is not a real parser for generic Fortran
+namelists.
+
+*Q:* Find examples of valid Fortran namelists and variables/values
+     that ~fixfort4~ fails with.
+
+Environment variable ~OMP_NUM_THREADS~ tells the program how many
+OpenMP threads each process (MPI task) can run. The threads run most
+efficiently if each thread gets a core, usually. Note, as for the
+~NPROC~ parameter's value above, I use an environment variable which
+SLURM batch system has set in the batch jobs scripts environment at
+runtime according to my resource reservation specifications.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_run_gnu_taito.bash
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+#+END_SRC
+
+*Q:* What is the benefit of using the environment variables set by
+     SLURM instead of just writing the same number here and in the
+     ~#SBATCH~ line?
+
+Now that we have set everything up, let's launch the parallel
+application. SLURM comes with an integrated MPI program launcher
+~srun~. The MPI launcher ~srun~ knows about the job's allocation, and
+usually places the MPI tasks on different cores reasonably well.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_run_gnu_taito.bash
+srun ${MY_OIFS_EXE}
+#+END_SRC
+
+** Scalability test
+
+As we increase the number of MPI processes and threads, the parallel
+overhead from inter-process communication, sequential parts of the
+code and what not, is increasing, and finally eats away all extra
+performance gained by increasing resources. In general, the limit
+where using more resources is still efficient depends on the balance
+between computation and communication. Basically, you can use more
+tasks for larger jobs than small ones. In practice testing is the
+simplest way to know how well an application scales with a given
+system. For further details, see [[https://en.wikipedia.org/wiki/Amdahl%27s_law][Amdahl's law]] and [[https://en.wikipedia.org/wiki/Parallel_computing][parallel computing]]
+in wikipedia.
+
+In this exercise we will write a script that runs short OpenIFS
+calculations with fixed number of OpenMP threads (1), but with varying
+number of MPI tasks, and analyze the results.
+
+When writing scalability or other benchmarks, there are couple of
+details that we need to pay attention to. First, we need a good
+measurement. OpenIFS outputs timing information from each
+iteration. We may need to exclude the first or the last ones, but
+otherwise the average of these would suite well. The second detail to
+watch is that all benchmark jobs run on equivalent resources. The
+results for some jobs could be biased if there is an another job on
+the same computing node which is blocking some shared resource, for
+example. Thus, let's start the job script by reserving a whole node
+for our test.
+
+#+BEGIN_SRC bash -n :tangle ../bin/oifs_run_scalability_gnu_taito.bash
+#!/bin/bash
+#SBATCH -N 1 --exclusive -t 15 -p test
+#+END_SRC
+
+Then we load the environment, extract the test case, and define
+~fixfort4~ function as in the acceptance test.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_run_scalability_gnu_taito.bash
+url=https://raw.githubusercontent.com/jlento/NumLab2016/master/bin
+source <(curl -s ${url}/oifs_env_gnu_taito.bash)
+sdir=${USERAPPL}/oifs/src
+ver=oifs38r1v04
+cd ${WRKDIR}
+tar xf --strip-components=1 ${sdir}/${ver}.tar.gz ${ver}/t21test
+cd t21test
+fixfort4() {
+    local name value prog=""
+    for arg in "$@"; do
+        name="${arg%%=*}"
+	value=$(printf %q "${arg#*=}")
+	value="${value//\//\/}"
+        prog="s/(^|[ ,])(${name} *=)[^,]*/\\1\\2 ${value}/"$'\n'"$prog"
+    done
+    sed -i -r -e "$prog" fort.4
+}
+#+END_SRC
+
+Next we write a loop, which runs the test with a varying number of MPI
+tasks within single allocation (job file). Notice, this time we need
+to give the number of the MPI tasks that we wish ~srun~ to launch
+explicitly, because it cannot infer that from the job allocation
+information. As a last change, we redirect the standard output to a
+file, which name depends on the number of used MPI tasks.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_run_scalability_gnu_taito.bash
+for ntasks in $(seq 1 16); do
+    fixfort4 NPROC=${ntasks}
+    srun -n ${ntasks} ${MY_OIFS_EXE} > out.${ntasks}
+done
+#+END_SRC
+
+** Exercise
+
+Run the acceptance test with both the OpenIFS binary which you
+compiled with GNU compiler and with the OpenIFS binary which you
+compiled with Intel compiler. Verify that both produced correct
+results.
+
+Run the scaling test with both GNU and Intel versions of the
+executable. Write a script (I'd use bash + awk) that calculates the
+average timing of the last 6 iterations from all ~out.*~ files (for
+each compiler separately), and outputs the results to a tables
+
+| #tasks | time |
+|--------+------|
+|      1 |  ... |
+|      2 |  ... |
+|    ... |  ... |
+|     16 |  ... |
+
+which are easy to plot with gnuplot, for example. Plot the data and
+analyze the results.

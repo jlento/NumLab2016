@@ -1,0 +1,437 @@
+#+OPTIONS: toc:nil
+#+LATEX_CLASS_OPTIONS: [12pt, a4paper]
+#+LATEX_HEADER: \input{exercise_header.tex}
+
+*LABORATORY COURSE IN NUMERICAL METEOROLOGY*\\
+*Exercise 2, Fri Jan 29 14:15-16:00 2016, E206*
+
+* Building OpenIFS
+
+The primary goal of this exercise is to teach how to build scientific
+software from sources in high-performance computing (HPC)
+environment. The secondary goal is to demonstrate how to automate and
+document the build process by writing it as a program. The same
+approch is fruitful in other tasks, such as running the experiments
+and post-processing the results, too. It's better to be a programmer
+than a computer.
+
+The major bulk of the text in this exercise describes in detail the
+script that builds OpenIFS from the sources in CSC's general purpose
+cluster taito.csc.fi using GNU Fortran compiler.
+
+I follow the OpenIFS build instructions
+
+- [[https://software.ecmwf.int/wiki/display/OIFS/User+Guide]]
+
+and refer to /CSC computing environment guide/ and /Taito users guide/
+documents about the computing environment
+
+- [[https://research.csc.fi/csc-guide]]
+- [[https://research.csc.fi/taito-user-guide]]
+
+Although this document is verbose, the number of program lines is
+actually small.
+
+** Setup
+
+All the material is in the GitHub repository [[https://github.com/jlento/NumLab2016][NumLab2016]] as in the
+previous exercise [[https://github.com/jlento/NumLab2016/blob/master/src/Intro_exercise.org][Intro_exercise.org]].
+
+The build script that we go through in this exercise is in two files,
+~oifs_env_gnu_taito.bash~ and ~oifs_build_gnu_taito.bash~, in the
+sub-directory ~NumLab2016/bin/~.
+
+*** OpenIFS source
+
+*OpenIFS is not open source. Do not distribute it!*
+
+Our OpenIFS license covers only computers owned by the University of
+Helsinki and CSC. Do not install OpenIFS on any computer not owned by
+the University of Helsinki or CSC.
+
+OpenIFS source file archive ~oifs38r1v04.tar.gz~ is already
+downloaded from ~ftp.ecmwf.int~ to a local disk at CSC. Ask the
+instructors where to find it on taito.
+
+** Build environment
+
+We will build a dynamically linked OpenIFS executable. The linker
+needs to find the same libraries at runtime which were included at
+the compile time. There are basically two ways to achieve this.
+
+1. hardcode the full path names of the libraries into the executable
+   /at the build time/ (*RPATH*)
+2. set the linker library search path /at the runtime/ (*LD_LIBRARY_PATH*)
+
+Both have their uses. The current module system in taito follows the
+second approach, and modifies the linker search path using environment
+variable ~LD_LIBRARY_PATH~. The idea is that when the same modules are
+loaded both at the build and at the runtime, the linker should find
+the right libraries.
+
+If we think building and running OpenIFS as programming tasks, the
+most obvious way to have the same environment in both tasks is to
+write the environment setup in a sinle, separate "header" file, here
+~oifs_env_gnu_taito.bash~, and include that at the beginning of both
+the build and the run scripts.
+
+*** Prerequisites
+
+ECMWF documentation lists the [[https://software.ecmwf.int/wiki/display/OIFS/Prerequisites][prerequisities]] needed for building and
+running OpenIFS.
+
+The first prerequisites to check are the subroutine libraries that
+OpenIFS links against, i.e. the libraries which contain subroutines
+that OpenIFS directly uses. Those are the libraries that contain
+*MPI*, *LAPACK/BLAS*, and *grib-api* subroutines. We can use module
+system, command `module spider`, and [[https://research.csc.fi/taito-user-guide][Taito Users Guide]], to find a
+compatible combination of modules that provide the required
+subroutines (and their dependencies). This step may require some
+experience, so in general, do not hesitate to ask help.
+
+*** Environment setup bash snippet
+
+One possible set of compatible modules for building
+OpenIFS in taito is loaded with commands
+
+#+BEGIN_SRC bash -n :tangle ../bin/oifs_env_gnu_taito.bash
+# Load environment modules
+module purge
+module load python-env/2.7.10 hdf5-serial/1.8.15
+module load netcdf4-serial/4.3.3.1 grib-api/1.14.2
+#+END_SRC
+
+and that is exactly what goes into file
+~oifs_env_gnu_taito.bash~.
+
+Since the run scripts will source this file too, and it's use is a bit
+similar to the module files, let's also define here the full path to the
+executable that we will build in this exercise.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_env_gnu_taito.bash
+# Full path name to the OpenIFS executable
+export MY_OIFS_EXE=$USERAPPL/oifs/gnu-opt/bin/master.exe
+#+END_SRC
+
+** Build script
+
+The build script, in files ~oifs_env_gnu_taito.bash~ and
+~oifs_build_gnu_taito.bash~, includes some elements which are typical
+to programs in general. Some of them are not absolutely necessary to
+get OpenIFS built.
+
+I have written the build program in bash. (If I would think that some
+other language, Python for example, would suite this kind of work
+better, I should use it as my login shell, too. Right?)  The idea that
+the user should be able to run the program directly from GitHub, has
+influenced the format, too. For example, I have omitted the usual
+[[https://en.wikipedia.org/wiki/Shebang_(Unix)][shebang]] from the beginning of the bash script (because I do not know
+if there is a way to give execute permissions to anonumous pipes).
+
+*** Bash options
+
+Usually one gives options to programs at the time they are started.
+As bash is interpreter, you can tell it how to behave within the
+scripts, too. The line below tells bash to stop immediately if any of
+the commands fail, if the exit status of the last command is nonzero,
+to be exact, and that it should echo all commands that it runs.
+
+#+BEGIN_SRC bash -n :tangle ../bin/oifs_build_gnu_taito.bash
+# Bash options
+set -ex
+#+END_SRC
+
+*Q:* Giving ~set -e~ in interactive bash shell might be annoying. Why?
+
+*** Defining a helper function
+
+It is easy to define functions in bash. Let's define one for fun.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Helper functions
+die() { echo "$@" 1>&2 ; exit 1; }
+#+END_SRC
+
+*** Variable definitions
+
+I have a habit of defining variables close to the beginning of the
+scripts for things that I think are likely to need attention by the
+user. One such thing is the version of OpenIFS
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Variable definitions
+oifsver=oifs38r1v04
+#+END_SRC
+
+*** Build directory
+
+Let's next set the directory in which the actual build is run. In
+general, we want to run builds in temporary directories because the
+builds generate lot's of small files which are not needed later. Also,
+the ~/tmp~ disc is local to the login nodes in taito, which takes away
+the unnecessary load (frequent metadata access) from the parallel file
+system.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Overridable variable definition with default values
+: ${builddir:=${TMPDIR:=/tmp}}
+#+END_SRC
+
+*Q:* Colon ~:~ is the first word on the line, so it must be a
+command. What does it do? How does the above command with /parameter
+expansions/ exactly work?  Which cases does it cover?
+
+*** Passing an argument to the script
+
+I choose to pass the path to the OpenIFS source tar ball
+~oifs38r1v04.tar.gz~ and the patch file ~sufa.patch~ as the first
+argument to the script.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Script's arguments processing
+srcdir=${1:=.}
+test -f "${srcdir}/${oifsver}.tar.gz" || \
+    die "Give the path to the OpenIFS source tar ball as the first argument"
+#+END_SRC
+
+*Q:* What happens if you do not pass the location of the sources as
+     the first argument?
+
+If the OpenIFS sources were available in GitHub or some other public
+repository, there would be no need to pass the location of the sources
+as an argument. It could be hard coded into the build program.
+
+*** Preparing the sources
+
+Let's first make the build directory if it does not already exist, and
+then unpack the source there.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Unpack original source tar ball
+mkdir -p ${builddir}
+cd $_
+tar xvf ${srcdir}/${oifsver}.tar.gz
+#+END_SRC
+
+Some compilers had issues with the original source code, and we need
+to fix (patch) the original source. This is rather common when we use
+a different version of the compiler from what the developers have
+tested. Patch files are in plain text, so you can easily see the
+changes.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Patches
+test -f ${srcdir}/sufa.patch && patch -p0 < ${srcdir}/sufa.patch || :
+#+END_SRC
+
+*Q:* What happens if the file ~${srcdir}/sufa.patch~ does not
+exist? What would happen in this script if ~|| :~ were missing from
+the end of the line?
+
+*** Configuring the build system
+
+Next we need to inform the OpenIFS build system about which kind of
+version of OpenIFS we wish to build, and about the particularities of
+our environment. Basically this usually boils down to telling which
+compiler to use, against which libraries to link, and where to find
+them. Unlike for a regular workstation Linux distributions, writing a
+generic configuration script for all HPC environments that could
+automatically "smell" the best combination of "everything" is really
+hard. The choice that OpenIFS developers have made here, that they
+require the user to have enough expertise to set some details
+manually, is a sensible one.
+
+**** FCM
+
+OpenIFS uses a (yet another) custom build tool called fcm. Personally,
+I have not seen a case in which writing a new build tool for a single
+software package would make any sense, or make the build process any
+easier. Fcm is not an exception. Dear students and colleagues, please
+learn how to write makefiles.
+
+OpenIFS build documentation
+[[https://software.ecmwf.int/wiki/display/OIFS/Building+OpenIFS]] advices
+to add the location of the fcm binary to the search path. Instead
+of modifying the ~PATH~ environment variable, I choose to call fcm
+using it's relative path name later in the script.
+
+**** BLAS and LAPACK libraries
+
+I chose to use BLAS and LAPACK routines from Intel's MKL
+library. Loading module mkl/11.3.0 has already set useful
+envivironment variables, such as ~MKLROOT~.
+
+Figuring out proper linker flags needed for including MKL could be
+challenging. Fortunately Intel provides a link tool to help here. You
+could also use a web page [[https://software.intel.com/en-us/articles/intel-mkl-link-line-advisor][Intel® Math Kernel Library Link Line Advisor]]
+and cut'n'paste the required flags into the ~OIFS_*~ variables later.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# MKL link line tool setup
+mkltool=${MKLROOT}/tools/mkl_link_tool
+mklopts="-c gnu_f -o gomp"
+#+END_SRC
+
+Here I use the variable ~mklopts~ to hold the options that tell the MKL
+link tool which compiler and threading library I'm using.
+
+*Q:* Run the link tool and play with the www-page. What
+flags actually go to the compiler and linker?
+
+**** Configuration templates
+
+OpenIFS comes with a set of (fcm) configuration templates for
+different compilers and optimization levels and what not. We can
+choose either to modify a template or to use the template as it is,
+and just override some variables using environment variables. Since we
+are writing this already as program in a file, I choose the latter
+approach.
+
+The default values of the compiler (gnu) and optimization level
+(noopt), in variables ~OIFS_COMP~ and ~OIFS_BUILD~, can be read from
+the top level configuration file \\
+~oifs38r1v04/make/oifs.cfg~. Gnu is the default compiler suite, so we
+need to change only the optimization type.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# OpenIFS build type
+OIFS_BUILD="opt"
+#+END_SRC
+
+**** Compile options
+
+Compile flags influence the type of the compiled object files. Here we
+instruct the compiler to generate reasonably optimized code that is
+suitable for regular production runs, and where to find the include
+files for MKL.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Compile options
+OIFS_FFLAGS="-O2 -fconvert=big-endian -fopenmp
+             $(2>/dev/null ${mkltool} -opts ${mklopts})"
+#+END_SRC
+
+As a detail, notice how bash parses the line change when the
+double-quote is open, and how the MKL link tool command is used inside
+the expansion.
+
+*Q:* What is ~2>/dev/null~ doing in the front of ~${mkltool}~
+command, and why it is there?
+
+**** Link options
+
+Do not be fooled by the fact that the linker is often called with the
+same name as the compiler. Link step, where different object files are
+linked together to produce an executable, is a separate task from the
+compile step, in which the plain-text source files are compiled into
+the binary object files.
+
+Often build systems include the compile options here too by
+default. Most of the time they do no harm, and often include some
+options that also the linker needs to be avare of, such as enabling
+the OpenMP parallelization. Fcm does not seem to include compile
+options automatically into the link options, so I'll add OpenMP option
+explicitly here.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Generic link options
+OIFS_LFLAGS="-fopenmp"
+#+END_SRC
+
+The options needed for linking the MKL and the grib-api libraries
+could in principle have gone to the previous definition, too. However,
+default configure template sets unsuitable values (certain to fail)
+for the varibles below, which would need to be nullified explicitly
+anyway, so I will just set them explicitly.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# BLAS and LAPACK link options and grib-api root directory
+OIFS_LAPACK_LIB="$(2>/dev/null ${mkltool} -libs ${mklopts})"
+OIFS_GRIB_API_DIR="$GRIB_API_DIR"
+#+END_SRC
+
+Unlike for the ~OIFS_LAPACK_LIB~ variable, the value of the variable
+~OIFS_GRIB_API_DIR~ does not go into the link line in verbatim, but is
+used by the build system to generate suitable link options.
+
+*Q:* We can instruct the linker to hard code the paths to the shared
+     libraries into the executable. That would make the executable
+     independent of the value of the ~LD_LIBRARY_PATH~ variable at
+     runtime. What options would we need here?
+
+**** Exported variables
+
+Only exported variables are visible (in scope) for sub-shells. The
+next line exports all variables that OpenIFS build system uses,
+i.e. the variable names which begin with ~OIFS_~:
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Export all variables OIFS_*
+export $(compgen -A variable OIFS_)
+#+END_SRC
+
+*** Build
+
+Now that everything is in place and properly configured, the build is
+easy. Fcm build tool takes some arguments in addition to the top
+level configuration file ~oifs.cfg~:
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Run the build
+cd ${builddir}/${oifsver}/make
+../fcm/bin/fcm make -v --new -j4 -f oifs.cfg
+#+END_SRC
+
+*Q:* What do the fcm options do?
+
+*** Install
+
+The final install step is just copying the executable(s) from the
+temporary build directory to the final destination.
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# Copy the executables from the temporary build dir
+mkdir -p $(dirname ${MY_OIFS_EXE})
+cp gnu-opt/oifs/bin/*  $(dirname ${MY_OIFS_EXE})
+#+END_SRC
+
+** Running the build script
+
+Congratulations! Now all that remains to do is to run our build
+script. If you cloned the GitHub repository to local disc in taito
+in directory ~\~/github/NumLab2016~, and the OpenIFS source tar
+ball ~oifs38r1v04.tar.gz~ and the patch file ~sufa.patch~ are in
+directory ~${USERAPPL}/oifs/src~ you can run the script with
+
+#+BEGIN_SRC bash
+scriptdir=~/github/NumLab2016/bin
+bash <(cat ${scriptdir}/oifs_{env,build}_gnu_taito.bash) ${USERAPPL}/oifs/src
+#+END_SRC
+
+Or, you can run it directly from GitHub!
+
+#+BEGIN_SRC bash
+url=https://raw.githubusercontent.com/jlento/NumLab2016/master/bin
+bash <(curl -s ${url}/oifs_{env,build}_gnu_taito.bash) ${USERAPPL}/oifs/src
+#+END_SRC
+
+In fact, the above two lines is all that is needed to build OpenIFS on
+taito, now.
+
+** And the exercise?
+
+The basic exercise is to repeat the build using Intel compiler. At the
+simplest, it can be just concatenating the two build script files
+together and editing and testing the script on taito until it works.
+
+There are many ways that you can make the exercise more
+interesting. For example, you can open a GitHub accout, fork my
+NumLab2016 repository, develop the new build script properly, and when
+done, make a pull request to my original repository about the new
+build Intel script or other improvements. And/or, hardcode the paths
+to the shared libraries to the executable. And/or, if you have an
+account in sisu.csc.fi, you can build OpenIFS there, using GNU,
+Intel or Cray compilers, and maybe link the BLAS and LAPACK routines
+from Cray's LibSci math library instead of from Intel's MKL. In sisu
+you can use the static linking scheme which is the default in Cray's
+environment.
