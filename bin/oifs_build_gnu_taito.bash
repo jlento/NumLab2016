@@ -5,23 +5,21 @@ set -ex
 die() { echo "$@" 1>&2 ; exit 1; }
 
 # Variable definitions
-oifsver=oifs38r1v04
+oifsver=oifs38r1
 
 # Overridable variable definition with default values
 : ${builddir:=${TMPDIR:=/tmp}}
 
 # Script's arguments processing
-srcdir=${1:=.}
-test -f "${srcdir}/${oifsver}.tar.gz" || \
-    die "Give the path to the OpenIFS source tar ball as the first argument"
+tarball=${1:?}
+shift
+test -f "${tarball}" || \
+    die "OpenIFS source tar ball should be the first argument"
 
 # Unpack original source tar ball
 mkdir -p ${builddir}
 cd $_
-tar xvf ${srcdir}/${oifsver}.tar.gz
-
-# Patches
-test -f ${srcdir}/sufa.patch && patch -p0 < ${srcdir}/sufa.patch || :
+tar xvf ${tarball}
 
 # MKL link line tool setup
 mkltool=${MKLROOT}/tools/mkl_link_tool
@@ -30,9 +28,12 @@ mklopts="-c gnu_f -o gomp"
 # OpenIFS build type
 OIFS_BUILD="opt"
 
+# OpenIFS install root
+OIFS_DEST_DIR="${USERAPPL}/oifs/gnu-${OIFS_BUILD}"
+
 # Compile options
 OIFS_FFLAGS="-O2 -fconvert=big-endian -fopenmp
-             $(2>/dev/null ${mkltool} -opts ${mklopts})"
+             $(${mkltool} -opts ${mklopts} 2>/dev/null)"
 
 # Generic link options
 OIFS_LFLAGS="-fopenmp"
@@ -46,8 +47,4 @@ export $(compgen -A variable OIFS_)
 
 # Run the build
 cd ${builddir}/${oifsver}/make
-../fcm/bin/fcm make -v --new -j4 -f oifs.cfg
-
-# Copy the executables from the temporary build dir
-mkdir -p $(dirname ${MY_OIFS_EXE})
-cp gnu-opt/oifs/bin/*  $(dirname ${MY_OIFS_EXE})
+../fcm/bin/fcm make -v --new -j4 -f oifs_conv.cfg

@@ -49,7 +49,7 @@ Our OpenIFS license covers only computers owned by the University of
 Helsinki and CSC. Do not install OpenIFS on any computer not owned by
 the University of Helsinki or CSC.
 
-OpenIFS source file archive ~oifs38r1v04.tar.gz~ is already
+OpenIFS source file archive ~oifs38r1.tgz~ is already
 downloaded from ~ftp.ecmwf.int~ to a local disk at CSC. Ask the
 instructors where to find it on taito.
 
@@ -104,15 +104,6 @@ module load netcdf4-serial/4.3.3.1 grib-api/1.14.2
 and that is exactly what goes into file
 ~oifs_env_gnu_taito.bash~.
 
-Since the run scripts will source this file too, and it's use is a bit
-similar to the module files, let's also define here the full path to the
-executable that we will build in this exercise.
-
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_env_gnu_taito.bash
-# Full path name to the OpenIFS executable
-export MY_OIFS_EXE=$USERAPPL/oifs/gnu-opt/bin/master.exe
-#+END_SRC
-
 ** Build script
 
 The build script, in files ~oifs_env_gnu_taito.bash~ and
@@ -160,7 +151,7 @@ user. One such thing is the version of OpenIFS
 
 #+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
 # Variable definitions
-oifsver=oifs38r1v04
+oifsver=oifs38r1
 #+END_SRC
 
 *** Build directory
@@ -183,22 +174,19 @@ expansions/ exactly work?  Which cases does it cover?
 
 *** Passing an argument to the script
 
-I choose to pass the path to the OpenIFS source tar ball
-~oifs38r1v04.tar.gz~ and the patch file ~sufa.patch~ as the first
-argument to the script.
+I choose to pass the OpenIFS source tar ball, ~oifs38r1.tgz~ path name
+as the first argument to the build script.
 
 #+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
 # Script's arguments processing
-srcdir=${1:=.}
-test -f "${srcdir}/${oifsver}.tar.gz" || \
-    die "Give the path to the OpenIFS source tar ball as the first argument"
+tarball=${1:?}
+shift
+test -f "${tarball}" || \
+    die "OpenIFS source tar ball should be the first argument"
 #+END_SRC
 
-*Q:* What happens if you do not pass the location of the sources as
-     the first argument?
-
 If the OpenIFS sources were available in GitHub or some other public
-repository, there would be no need to pass the location of the sources
+repository, there would be no need to pass the location of the source
 as an argument. It could be hard coded into the build program.
 
 *** Preparing the sources
@@ -210,23 +198,8 @@ then unpack the source there.
 # Unpack original source tar ball
 mkdir -p ${builddir}
 cd $_
-tar xvf ${srcdir}/${oifsver}.tar.gz
+tar xvf ${tarball}
 #+END_SRC
-
-Some compilers had issues with the original source code, and we need
-to fix (patch) the original source. This is rather common when we use
-a different version of the compiler from what the developers have
-tested. Patch files are in plain text, so you can easily see the
-changes.
-
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
-# Patches
-test -f ${srcdir}/sufa.patch && patch -p0 < ${srcdir}/sufa.patch || :
-#+END_SRC
-
-*Q:* What happens if the file ~${srcdir}/sufa.patch~ does not
-exist? What would happen in this script if ~|| :~ were missing from
-the end of the line?
 
 *** Configuring the build system
 
@@ -290,12 +263,19 @@ approach.
 The default values of the compiler (gnu) and optimization level
 (noopt), in variables ~OIFS_COMP~ and ~OIFS_BUILD~, can be read from
 the top level configuration file \\
-~oifs38r1v04/make/oifs.cfg~. Gnu is the default compiler suite, so we
+~oifs38r1/make/oifs.cfg~. Gnu is the default compiler suite, so we
 need to change only the optimization type.
 
 #+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
 # OpenIFS build type
 OIFS_BUILD="opt"
+#+END_SRC
+
+Let us also override the default install root
+
+#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
+# OpenIFS install root
+OIFS_DEST_DIR="${USERAPPL}/oifs/gnu-${OIFS_BUILD}"
 #+END_SRC
 
 **** Compile options
@@ -308,14 +288,14 @@ files for MKL.
 #+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
 # Compile options
 OIFS_FFLAGS="-O2 -fconvert=big-endian -fopenmp
-             $(2>/dev/null ${mkltool} -opts ${mklopts})"
+             $(${mkltool} -opts ${mklopts} 2>/dev/null)"
 #+END_SRC
 
 As a detail, notice how bash parses the line change when the
 double-quote is open, and how the MKL link tool command is used inside
 the expansion.
 
-*Q:* What is ~2>/dev/null~ doing in the front of ~${mkltool}~
+*Q:* What is ~2>/dev/null~ doing at the end of ~${mkltool}~
 command, and why it is there?
 
 **** Link options
@@ -379,40 +359,31 @@ level configuration file ~oifs.cfg~:
 #+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
 # Run the build
 cd ${builddir}/${oifsver}/make
-../fcm/bin/fcm make -v --new -j4 -f oifs.cfg
+../fcm/bin/fcm make -v --new -j4 -f oifs_conv.cfg
 #+END_SRC
 
 *Q:* What do the fcm options do?
 
-*** Install
-
-The final install step is just copying the executable(s) from the
-temporary build directory to the final destination.
-
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_gnu_taito.bash
-# Copy the executables from the temporary build dir
-mkdir -p $(dirname ${MY_OIFS_EXE})
-cp gnu-opt/oifs/bin/*  $(dirname ${MY_OIFS_EXE})
-#+END_SRC
-
 ** Running the build script
 
 Congratulations! Now all that remains to do is to run our build
-script. If you cloned the GitHub repository to local disc in taito
-in directory ~\~/github/NumLab2016~, and the OpenIFS source tar
-ball ~oifs38r1v04.tar.gz~ and the patch file ~sufa.patch~ are in
-directory ~${USERAPPL}/oifs/src~ you can run the script with
+script. If you cloned the GitHub repository to local disc in taito in
+directory ~\~/github/NumLab2016~, and the path name of OpenIFS source
+tar ball is ~${USERAPPL}/oifs/src/oifs38r1v.tgz~, you can run the
+script with
 
 #+BEGIN_SRC bash
 scriptdir=~/github/NumLab2016/bin
-bash <(cat ${scriptdir}/oifs_{env,build}_gnu_taito.bash) ${USERAPPL}/oifs/src
+tarball=${USERAPPL}/oifs/src/oifs38r1.tgz
+bash <(cat ${scriptdir}/oifs_{env,build}_gnu_taito.bash) ${tarball}
 #+END_SRC
 
 Or, you can run it directly from GitHub!
 
 #+BEGIN_SRC bash
 url=https://raw.githubusercontent.com/jlento/NumLab2016/master/bin
-bash <(curl -s ${url}/oifs_{env,build}_gnu_taito.bash) ${USERAPPL}/oifs/src
+tarball=${USERAPPL}/oifs/src/oifs38r1.tgz
+bash <(curl -s ${url}/oifs_{env,build}_gnu_taito.bash) ${tarball}
 #+END_SRC
 
 In fact, the above two lines is all that is needed to build OpenIFS on
