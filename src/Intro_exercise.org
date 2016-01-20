@@ -147,55 +147,6 @@ git clone https://github.com/jlento/NumLab2016.git
 :RESULTS:
 :END:
 
-or, you can just download the files without the change history (small
-download) with
-
-#+BEGIN_SRC bash :results output drawer :dir /tmp
-url=https://github.com/jlento/NumLab2016/archive/master.zip
-curl -L -o NumLab2016-master.zip $url
-unzip NumLab2016-master.zip
-#+END_SRC
-
-#+RESULTS:
-:RESULTS:
-Archive:  NumLab2016-master.zip
-f0c42217b2263f56a9dc611177d92c35142fe9c9
-   creating: NumLab2016-master/
-  inflating: NumLab2016-master/.gitignore  
-  inflating: NumLab2016-master/README.md  
-   creating: NumLab2016-master/bin/
-  inflating: NumLab2016-master/bin/oifs_build_gnu_taito.bash  
-  inflating: NumLab2016-master/bin/oifs_env_gnu_taito.bash  
-  inflating: NumLab2016-master/bin/oifs_run_gnu_taito.bash  
-  inflating: NumLab2016-master/bin/oifs_run_scalability_gnu_taito.bash  
-  inflating: NumLab2016-master/bin/sov.bash  
-  inflating: NumLab2016-master/bin/sov_fun.bash  
-   creating: NumLab2016-master/doc/
-  inflating: NumLab2016-master/doc/BuildOpenIFS_exercise.pdf  
-  inflating: NumLab2016-master/doc/BuildOpenIFS_slide.html  
-  inflating: NumLab2016-master/doc/Intro_exercise.pdf  
-  inflating: NumLab2016-master/doc/Intro_slide.html  
-  inflating: NumLab2016-master/doc/RunOpenIFS_exercise.pdf  
-  inflating: NumLab2016-master/makefile  
-   creating: NumLab2016-master/src/
-  inflating: NumLab2016-master/src/BuildOpenIFS_exercise.org  
-  inflating: NumLab2016-master/src/BuildOpenIFS_slide.org  
-  inflating: NumLab2016-master/src/ComputeNode.svg  
-  inflating: NumLab2016-master/src/Intro_exercise.org  
-  inflating: NumLab2016-master/src/Intro_slide.org  
-  inflating: NumLab2016-master/src/ParallelFileSystem.svg  
-  inflating: NumLab2016-master/src/RunOpenIFS_exercise.org  
-  inflating: NumLab2016-master/src/RunOpenIFS_slide.org  
-  inflating: NumLab2016-master/src/SupercomputerArchitecture.svg  
-  inflating: NumLab2016-master/src/exercise_header.tex  
-  inflating: NumLab2016-master/src/graybox.tex  
-:END:
-
-As a side note, ~unzip~ command cannot read compressed ZIP file as an input
-stream -- it requires that the ZIP file is an actual file. This forces
-me to write the ZIP file to a temporary file instead of just piping it
-from ~curl~ to ~unzip~.
-
 ** Directories in HPC
 
 There will be lot's of files, and even more when we start running the
