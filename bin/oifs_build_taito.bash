@@ -2,19 +2,32 @@
 set -ex
 
 # Helper functions
+
+# In case of fatal error
 die() { echo "$@" 1>&2 ; exit 1; }
 
-# Variable definitions
-oifsver=oifs38r1
-
-# Overridable variable definition with default values
-: ${builddir:=${TMPDIR:=/tmp}}
+# Compiler suite
+compiler_suite() {
+    case "$(2>&1 module -t list intel/ gcc/)" in
+        intel*)
+	    echo intel
+            ;;
+        gcc*)
+	    echo gnu
+            ;;
+	*)
+	    die "No compiler module loaded?"
+	    ;;
+    esac
+}
 
 # Script's arguments processing
 tarball=${1:?}
-shift
 test -f "${tarball}" || \
     die "OpenIFS source tar ball should be the first argument"
+
+# Build directory root
+: ${builddir:=${TMPDIR:=/tmp}}
 
 # Unpack original source tar ball
 mkdir -p ${builddir}
@@ -23,13 +36,23 @@ tar xvf ${tarball}
 
 # MKL link line tool setup
 mkltool=${MKLROOT}/tools/mkl_link_tool
-mklopts="-c gnu_f -o gomp"
+case "$(compiler_suite)" in
+    gnu)
+	mklopts="-c gnu_f -o gomp"
+	;;
+    intel)
+	mklopts="-c intel_f -o iomp5"
+	;;
+esac
+
+# OpenIFS compiler
+OIFS_COMP="$(compiler_suite)"
 
 # OpenIFS build type
 OIFS_BUILD="opt"
 
 # OpenIFS install root
-OIFS_DEST_DIR="${USERAPPL}/oifs/gnu-${OIFS_BUILD}"
+OIFS_DEST_DIR="${USERAPPL}/oifs/$(compiler_suite)-${OIFS_BUILD}"
 
 # Compile options
 OIFS_FFLAGS="-O2 -fconvert=big-endian -fopenmp
@@ -46,5 +69,5 @@ OIFS_GRIB_API_DIR="$GRIB_API_DIR"
 export $(compgen -A variable OIFS_)
 
 # Run the build
-cd ${builddir}/${oifsver}/make
+cd ${builddir}/$(basename ${tarball%%.*})/make
 ../fcm/bin/fcm make -v --new -j4 -f oifs_conv.cfg
