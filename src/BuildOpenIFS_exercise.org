@@ -39,7 +39,7 @@ previous exercise [[https://github.com/jlento/NumLab2016/blob/master/src/Intro_e
 
 The build script that we go through in this exercise is in two files,
 ~oifs_env_gnu_taito.bash~ and ~oifs_build_taito.bash~, in the
-sub-directory ~NumLab2016/bin/~.
+sub-directory ~NumLab2016/scripts/~.
 
 *** OpenIFS source
 
@@ -94,7 +94,7 @@ experience, so in general, do not hesitate to ask help.
 One possible set of compatible modules for building
 OpenIFS in taito is loaded with commands
 
-#+BEGIN_SRC bash -n :tangle ../bin/oifs_env_gnu_taito.bash
+#+BEGIN_SRC bash -n :tangle ../scripts/oifs_env_gnu_taito.bash
 # Load environment modules
 module purge
 module load gcc/4.9.3 intelmpi/5.1.1 mkl/11.3.0
@@ -126,7 +126,7 @@ scripts, too. The line below tells bash to stop immediately if any of
 the commands fail, if the exit status of the last command is nonzero,
 to be exact, and that it should echo all commands that it runs.
 
-#+BEGIN_SRC bash -n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash -n :tangle ../scripts/oifs_build_taito.bash
 # Bash options
 set -ex
 #+END_SRC
@@ -138,15 +138,16 @@ set -ex
 It is easy to define functions in bash. Let's define two that are
 useful in other scripts, too:
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # Helper functions
 
 # In case of fatal error
 die() { echo "$@" 1>&2 ; exit 1; }
 
-# Compiler suite
+# Figure out compiler suite from loaded modules
 compiler_suite() {
-    case "$(2>&1 module -t list intel/ gcc/)" in
+    [[ "$LOADEDMODULES" =~ (^|:)(gcc|intel)/ ]]
+    case "${BASH_REMATCH[2]}" in
         intel*)
 	    echo intel
             ;;
@@ -162,10 +163,10 @@ compiler_suite() {
 
 *** Passing an argument to the script
 
-I choose to pass the OpenIFS source tar ball, ~oifs38r1.tgz~, path name
-as the first argument to the build script.
+I choose to pass the OpenIFS source tar ball, ~oifs38r1.tgz~, path
+name as the first argument to the build script.
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # Script's arguments processing
 tarball=${1:?}
 test -f "${tarball}" || \
@@ -185,7 +186,7 @@ the ~/tmp~ disc is local to the login nodes in taito, which takes away
 the unnecessary load (frequent metadata access) from the parallel file
 system.
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # Build directory root
 : ${builddir:=${TMPDIR:=/tmp}}
 #+END_SRC
@@ -196,14 +197,28 @@ expansions/ exactly work?  Which cases does it cover?
 
 *** Preparing the sources
 
-Let's first make the build directory if it does not already exist, and
-then unpack the source there.
+Let's first make the build directory if it does not already
+exist. Then unpack and patch the source there.
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # Unpack original source tar ball
 mkdir -p ${builddir}
 cd $_
-tar xvf ${tarball}
+tar xf ${tarball}
+#+END_SRC
+
+Intel compiler version 16.0.0 has a small issue with the source, so we
+will need to patch the source, too.
+
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
+# Patch source
+url=https://raw.githubusercontent.com/jlento/NumLab2016/master/scripts
+for f in $(find . -name sufa.F90); do
+    pushd .
+    cd $(dirname $f)
+    patch -s -f -p4 < <(curl -s ${url}/sufa.patch)
+    popd
+done
 #+END_SRC
 
 *** Configuring the build system
@@ -244,21 +259,23 @@ challenging. Fortunately Intel provides a link tool to help here. You
 could also use a web page [[https://software.intel.com/en-us/articles/intel-mkl-link-line-advisor][Intel® Math Kernel Library Link Line Advisor]]
 and cut'n'paste the required flags into the ~OIFS_*~ variables later.
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # MKL link line tool setup
-mkltool=${MKLROOT}/tools/mkl_link_tool
-case "$(compiler_suite)" in
-    gnu)
-	mklopts="-c gnu_f -o gomp"
-	;;
-    intel)
-	mklopts="-c intel_f -o iomp5"
-	;;
-esac
+mkltool() {
+    local mode="$1"
+    local mklcmd=${MKLROOT}/tools/mkl_link_tool
+    local mklopts
+    case "$(compiler_suite)" in
+	gnu)
+	    mklopts="-c gnu_f -o gomp"
+	    ;;
+	intel)
+	    mklopts="-c intel_f -o iomp5"
+	    ;;
+    esac
+    echo "$($mklcmd $mode $mklopts 2> /dev/null | tr '()' '{}')"
+}
 #+END_SRC
-
-Here I use the variable ~mklopts~ to hold the options that tell the MKL
-link tool which compiler and threading library I'm using.
 
 *Q:* Run the link tool and play with the www-page. What
 flags actually go to the compiler and linker?
@@ -277,7 +294,7 @@ The default values of the compiler (gnu) and optimization level
 the top level configuration file ~oifs38r1/make/oifs_conv.cfg~. We
 will here give (override) them explicitly:
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # OpenIFS compiler
 OIFS_COMP="$(compiler_suite)"
 
@@ -287,7 +304,7 @@ OIFS_BUILD="opt"
 
 Let us also override the default install root
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # OpenIFS install root
 OIFS_DEST_DIR="${USERAPPL}/oifs/$(compiler_suite)-${OIFS_BUILD}"
 #+END_SRC
@@ -299,10 +316,17 @@ instruct the compiler to generate reasonably optimized code that is
 suitable for regular production runs, and where to find the include
 files for MKL.
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # Compile options
-OIFS_FFLAGS="-O2 -fconvert=big-endian -fopenmp
-             $(${mkltool} -opts ${mklopts} 2>/dev/null)"
+case "$(compiler_suite)" in
+    gnu)
+	OIFS_FFLAGS="-O2 -fconvert=big-endian -fopenmp $(mkltool -opts)"
+	;;
+    intel)
+	OIFS_FFLAGS="-O2 -convert big_endian -fopenmp $(mkltool -opts)"
+	;;
+esac
+
 #+END_SRC
 
 As a detail, notice how bash parses the line change when the
@@ -327,7 +351,7 @@ the OpenMP parallelization. Fcm does not seem to include compile
 options automatically into the link options, so I'll add OpenMP option
 explicitly here.
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # Generic link options
 OIFS_LFLAGS="-fopenmp"
 #+END_SRC
@@ -338,9 +362,9 @@ default configure template sets unsuitable values (certain to fail)
 for the varibles below, which would need to be nullified explicitly
 anyway, so I will just set them explicitly.
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # BLAS and LAPACK link options and grib-api root directory
-OIFS_LAPACK_LIB="$(2>/dev/null ${mkltool} -libs ${mklopts})"
+OIFS_LAPACK_LIB="$(mkltool -libs)"
 OIFS_GRIB_API_DIR="$GRIB_API_DIR"
 #+END_SRC
 
@@ -359,7 +383,7 @@ Only exported variables are visible (in scope) for sub-shells. The
 next line exports all variables that OpenIFS build system uses,
 i.e. the variable names which begin with ~OIFS_~:
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # Export all variables OIFS_*
 export $(compgen -A variable OIFS_)
 #+END_SRC
@@ -370,7 +394,7 @@ Now that everything is in place and properly configured, the build is
 easy. Fcm build tool takes some arguments in addition to the top
 level configuration file ~oifs.cfg~:
 
-#+BEGIN_SRC bash +n :tangle ../bin/oifs_build_taito.bash
+#+BEGIN_SRC bash +n :tangle ../scripts/oifs_build_taito.bash
 # Run the build
 cd ${builddir}/$(basename ${tarball%%.*})/make
 ../fcm/bin/fcm make -v --new -j4 -f oifs_conv.cfg
@@ -386,16 +410,16 @@ directory ~\~/github/NumLab2016~, and the path name of OpenIFS source
 tar ball is ~${USERAPPL}/oifs/src/oifs38r1v.tgz~, you can run the
 script with
 
-#+BEGIN_SRC bash
-scriptdir=~/github/NumLab2016/bin
+#+BEGIN_SRC bash :results silent
+scriptdir=~/github/NumLab2016/scripts
 tarball=${USERAPPL}/oifs/src/oifs38r1.tgz
 bash <(cat ${scriptdir}/oifs_{env_gnu,build}_taito.bash) ${tarball}
 #+END_SRC
 
 Or, you can run it directly from GitHub!
 
-#+BEGIN_SRC bash
-url=https://raw.githubusercontent.com/jlento/NumLab2016/master/bin
+#+BEGIN_SRC bash :results silent
+url=https://raw.githubusercontent.com/jlento/NumLab2016/master/scripts
 tarball=${USERAPPL}/oifs/src/oifs38r1.tgz
 bash <(curl -s ${url}/oifs_{env_gnu,build}_taito.bash) ${tarball}
 #+END_SRC

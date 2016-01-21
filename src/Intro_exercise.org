@@ -262,7 +262,7 @@ As a final touch, let us wrap the whole thing into a bash function
 ~sov~, and insert the /positional parameters/ ~$@~ of the ~sov~
 function into the parameters of ~sinfo~:
 
-#+BEGIN_SRC bash :tangle ../bin/sov_fun.bash
+#+BEGIN_SRC bash :tangle ../scripts/sov_fun.bash
 sov () {
     sinfo -N -h -o '%5n %T' "$@" | uniq -w 5 | awk '
       {s="?"}
@@ -281,7 +281,7 @@ We can get the above lines defining the ~sov~ function from GitHub
 using ~curl~ command, and execute them in the current bash shell with
 
 #+BEGIN_SRC bash :results silent
-url=https://raw.githubusercontent.com/jlento/NumLab2016/master/bin
+url=https://raw.githubusercontent.com/jlento/NumLab2016/master/scripts
 source <(curl -s ${url}/sov_fun.bash)
 #+END_SRC
 
