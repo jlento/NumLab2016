@@ -15,11 +15,6 @@
 
 *More /enjoyable/ and /productive/ working with computers*
 
-** Organization
-
-Each learning outcome topic has lectures about the topic in general,
-OpenIFS specific exercises, and homework in Moodle.
-
 ** Pre-requisites
 
 -  general Linux command line skills, working with the directory

@@ -80,3 +80,9 @@ Objects that are suitable for static linking are in libraries named
 - searches so-libraries from paths in environment variable
   ~LD_LIBRARY_PATH~
 - searches some standard places defined in ~/etc/ld*~ files
+
+* Building OpenIFS
+
+** In the exercise
+
+ ...there is actually two versions of how to do it...
