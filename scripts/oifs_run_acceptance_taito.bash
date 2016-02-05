@@ -1,3 +1,5 @@
+# Batch job resource request specifications
+
 ntasks=2
 nthreads=2
 rtime=10
@@ -19,6 +21,7 @@ fixfort4() {
     done
     sed -i -r -e "$prog" fort.4
 }
+export -f fixfort4
 fixfort4 NPROC=${ntasks} LREFOUT=true NSTOP=144
 
 export OMP_NUM_THREADS=${nthreads}

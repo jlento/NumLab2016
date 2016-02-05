@@ -14,15 +14,15 @@ Large computing servers use batch queue systems to schedule and run
 computing jobs (batch jobs) from multiple users. Taito uses [[https://computing.llnl.gov/linux/slurm/][SLURM]]
 batch queue system.
 
-User writes a batch job as a shell script, and then submits the job
-script to the batch queue system. Batch system then schedules and runs
-the job according to the user's resource requests and queue policies.
+User writes a batch job as a shell script, and then submits the script
+to the batch system. Batch system then schedules and runs the job
+according to the user's resource requests and the queue policies.
 
-When the batch job system finds a suitable slot for the user's job, it
+When the batch system finds a suitable slot for the user's job, it
 first reserves the resources to the user according to the user's
 request. Then, it executes one copy of the job script until the script
 finishes or it runs out of the reserved time. The batch system charges
-user's account (project) for the reserved CPU resources, whether the
+user's account (project) for the reserved resources, whether the
 job actually uses them or not, for the time that the script is
 running.
 
@@ -32,38 +32,36 @@ gives at least two advantages compared to just writing a batch job
 script directly, which is somewhat more common (you can find examples
 in Taito user guide).
 
-The first advantage comes from the fact that the commands in our
-script are executed immediately, and the commands in the batch job
-scripts are executed only after they have queued and the batch system
-has found a suitable slot for them.  We notice trivial mistakes,
-such as wrong path names, immediately.
+The first advantage is that we notice trivial mistakes in our script,
+such as incorrect path names, immediately. This is because the regular
+part of the script executes immediately, whereas the commands within the
+batch job scripts are executed only after a possibly long queuing time.
 
-The second advantage comes from the fact that our script runs on the
-front end node prior to any compute nodes are reserved, but the batch
-job script only starts running when all the resources are reserved. We
-do not need to spend the CPU time of possibly hundreds or even
-thousands of processors idling while the script prepares
-(pre-processes) the input files, which usually is a sequential task.
+The second advantage is that we separate the sequential, and possible
+I/O heavy, pre-processing steps from the parallel stage of the
+job. We can avoid reserving (and getting billed for) the parallel
+computing resources during simple pre-preprocessing.
 
 ** Acceptance test
 
-After building an application, we usually first wish to check that
-the built binary gives correct results. Let's write a script
-that runs OpenIFS Acceptance test,
-[[https://software.ecmwf.int/wiki/display/OIFS/Testing+the+installation]].
+After building an application, we usually first check that the built
+binary gives correct results. Let's write a script that runs [[https://software.ecmwf.int/wiki/display/OIFS/Testing+the+installation][OpenIFS
+Acceptance test]].
 
-You can download the script from
+As usual, you can download the script from
 [[https://raw.githubusercontent.com/jlento/NumLab2016/master/scripts/oifs_run_acceptance_taito.bash]]
-for viewing and editing.
+for easier viewing and editing.
 
 *** Environment setup
 
 We will use the same environment setup script
-~oifs_env_gnu_taito.bash~ as we used when building OpenIFS. This way
+~oifs_env_gnu_taito.bash~ as we used when we built OpenIFS. This way
 the environment is consistently defined and all the variables that
 were defined at build time in the environment setup script are
 available at runtime, too. In a way, you can view the environment
-setup script as a module for OpenIFS.
+setup script as a "module" for OpenIFS. (Note: It is possible to
+define own modules, which work exactly like the system enviroment
+modules, too!)
 
 *** Runtime parameters
 
@@ -75,6 +73,9 @@ i.e. a total of 4 CPU cores. I plan to reserve the resources for 10
 minutes, and submit the job to test partition (queue).
 
 #+BEGIN_SRC bash -n :tangle ../scripts/oifs_run_acceptance_taito.bash
+
+# Batch job resource request specifications
+
 ntasks=2
 nthreads=2
 rtime=10
@@ -95,6 +96,9 @@ tar --strip-components=1 -x -f ${sdir}/${ver}.t*gz ${ver}/t21test
 cd t21test
 #+END_SRC
 
+Note, you will likely need to edit ~sdir~ variable, or make a softlink
+with ~ln -s ...~ from the actual source tar ball to ~sdir~.
+
 *** Modifying OpenIFS namelist runtime parameters
 
 We need to modify some Fortran 90 namelist parameters in the ~fort.4~
@@ -108,8 +112,8 @@ careful to set the parameters both in the job file and the input file
 so that they match.
 
 Here I define a function that takes the list of parameters to modify
-and their values as arguments, and modifies the ~fort.4~ file. See the
-actual call below the function definition.
+and their values as arguments, and modifies the ~fort.4~ file. The
+actual function call is below the definition.
 
 #+BEGIN_SRC bash +n :tangle ../scripts/oifs_run_acceptance_taito.bash
 fixfort4() {
@@ -122,6 +126,7 @@ fixfort4() {
     done
     sed -i -r -e "$prog" fort.4
 }
+export -f fixfort4
 fixfort4 NPROC=${ntasks} LREFOUT=true NSTOP=144
 #+END_SRC
 
@@ -171,6 +176,10 @@ reasonably well, etc.
 Note, I specify the executable name using the variable defined in the
 environment setup file, so it is consistent with the environment.
 
+*Q:* I could have placed the sbatch-command options, i.e. the resource
+     request specification, inside the job script, equally well. What
+     would that look like?
+
 ** Scalability test
 
 As we increase the number of MPI processes and threads, the parallel
@@ -179,10 +188,10 @@ code and what not, is increasing, and finally eats away all extra
 performance gained by increasing resources. In general, the limit
 where using more resources is still efficient depends on the balance
 between computation and communication. Basically, you can use more
-tasks for larger jobs than small ones. In practice testing is the
+tasks for the larger jobs than the small ones. In practice testing is the
 simplest way to know how well an application scales with a given
-system. For further details, see [[https://en.wikipedia.org/wiki/Amdahl%27s_law][Amdahl's law]] and [[https://en.wikipedia.org/wiki/Parallel_computing][parallel computing]]
-in wikipedia.
+system. For further details, see [[https://en.wikipedia.org/wiki/Amdahl%27s_law][Amdahl's law]] and [[https://en.wikipedia.org/wiki/Parallel_computing][Parallel computing]]
+in Wikipedia.
 
 When writing scalability or other benchmarks, there are couple of
 details that we need to pay attention to. First, we need a good
@@ -192,7 +201,10 @@ otherwise the average of these would suite well. The second detail to
 watch is that all benchmark jobs run on equivalent resources. The
 results for some jobs could be biased if there is an another job on
 the same computing node which is blocking some shared resource, for
-example.
+example. Also, in taito, there are nodes with Sandy Bridge CPUs and
+nodes with Haswell CPUs. Haswell nodes have 24 cores, whereas Sandy
+Bridge nodes have 16 cores, and there are some other minor differences
+in the different CPU types, too.
 
 ** Exercises
 
@@ -204,8 +216,8 @@ compiled with Intel compiler. The result file ~res_*~ should actually
 report that the maximum error is over 1% and the calculations are NOT
 correct, but that is fine. The t21test reference was generated with an
 OpenIFS version that has a different convection scheme, and the
-results should differ. (There should be a test for the current
-convection scheme, too, but there is not.)
+results should differ. (Would be nice to have a test for the current
+convection scheme, too.)
 
 *** Scaling test
 
@@ -213,28 +225,29 @@ Run the scaling test with both GNU and Intel versions of the
 executable. You will need to modify the sbatch command and the job
 script in the ~oifs_run_acceptance_taito.bash~ file to something like
 
-#+BEGIN_SRC bash
+#+BEGIN_SRC bash :tangle ../scripts/oifs_run_scalability_taito.bash
 export OMP_NUM_THREADS=1
 sbatch -N 1 --exclusive  -t ${rtime} -p ${partition} <<EOF
 #!/bin/bash
 for ntasks in 1 2 4 8 16; do
-    fixfort4 NPROC=${ntasks}
-    srun -n ${ntasks} ${OIFS_DEST_DIR}/oifs/bin/master.exe -e epc8 \
-        > out.${ntasks}
+    fixfort4 NPROC=\${ntasks} LREFOUT=false NSTOP=6
+    srun -n \${ntasks} -o out.\${ntasks} \
+        ${OIFS_DEST_DIR}/oifs/bin/master.exe -e epc8
 done
 EOF
 #+END_SRC
 
-Write a script (I'd use bash + awk) that calculates the
-average timing of the last 6 iterations from all ~out.*~ files (for
-each compiler separately), and outputs the results to a tables
+*Q:* Why there is backslash ~\~ before the variable ~${ntasks}~ in the
+     script?
 
-| #tasks | time |
-|--------+------|
-|      1 |  ... |
-|      2 |  ... |
-|    ... |  ... |
-|     16 |  ... |
+:scalability:
+#+BEGIN_SRC bash :exports none
+bash <(cat scripts/oifs_{env_gnu,run_acceptance}_taito.bash \
+       <(echo "scancel -u $USER") scripts/oifs_run_scalability_taito.bash)
+#+END_SRC
+:END:
 
-which are easy to plot with gnuplot, for example. Plot the data and
-analyze the results.
+Write a script (I'd use bash + awk) that calculates the average timing
+of the last 6 iterations from all ~out.*~ files (for each compiler
+separately), and outputs the results to tables which are easy to plot
+with gnuplot, for example. Plot the data and analyze the results.
