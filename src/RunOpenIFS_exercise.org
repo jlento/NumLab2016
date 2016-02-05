@@ -89,6 +89,8 @@ unpack the ~t21test~ case from the OpenIFS source package into the work
 directory, and enter the directory containing the input files.
 
 #+BEGIN_SRC bash +n :tangle ../scripts/oifs_run_acceptance_taito.bash
+# Set up input files
+
 sdir=${USERAPPL}/oifs/src
 ver=oifs38r1
 cd ${WRKDIR}
@@ -116,6 +118,8 @@ and their values as arguments, and modifies the ~fort.4~ file. The
 actual function call is below the definition.
 
 #+BEGIN_SRC bash +n :tangle ../scripts/oifs_run_acceptance_taito.bash
+# Modify fort.4 namelist
+
 fixfort4() {
     local name value prog=""
     for arg in "$@"; do
@@ -145,6 +149,8 @@ OpenMP threads each process (MPI task) can run. The threads run most
 efficiently if each thread gets a core, usually.
 
 #+BEGIN_SRC bash +n :tangle ../scripts/oifs_run_acceptance_taito.bash
+# Se the number OpenMP threads
+
 export OMP_NUM_THREADS=${nthreads}
 #+END_SRC
 
@@ -157,6 +163,8 @@ minimal. Here I use sbatch command line options to specify the job
 resource request.
 
 #+BEGIN_SRC bash -n :tangle ../scripts/oifs_run_acceptance_taito.bash
+# Create a batch job script and submit it
+
 sbatch -n ${ntasks} -c ${nthreads} -t ${rtime} -p ${partition} <<EOF
 #!/bin/bash
 srun ${OIFS_DEST_DIR}/oifs/bin/master.exe -e epc8
@@ -218,6 +226,15 @@ correct, but that is fine. The t21test reference was generated with an
 OpenIFS version that has a different convection scheme, and the
 results should differ. (Would be nice to have a test for the current
 convection scheme, too.)
+
+You can run the run script directly from GitHub similarly to the build
+script earlier:
+
+#+BEGIN_SRC bash :results silent
+url=https://raw.githubusercontent.com/jlento/NumLab2016/master/scripts
+bash <(curl -s ${url}/oifs_{env_gnu,run_acceptance}_taito.bash)
+#+END_SRC
+
 
 *** Scaling test
 
