@@ -5,7 +5,36 @@
 #+REVEAL_THEME: simple
 #+OPTIONS: toc:nil num:nil reveal_single_file:t
 
-* Running parallel programs on a supercomputer
+* Two types of parallel programs
+
+** Shared memory
+
+A single process can spawn multiple *threads*, light weight processes,
+which can *share*, i.e. "see and use", *the same memory*.
+
+- use multiple CPU cores, *within a node*.
+- OpenMP compiler pragmas
+
+#+REVEAL: split
+
+#+CAPTION: Reminder...
+[[file:ComputeNode.svg]]
+
+** Distributed memory
+
+*Processes* which do not share memory, possibly *in different compute
+nodes*, can *exchange messages* with each other.
+
+- use multiple CPU cores, possibly in *multiple nodes*
+- Message Passing Interface (MPI) library
+- MPI task = process
+
+#+REVEAL: split
+
+#+CAPTION: Reminder...
+[[file:SupercomputerArchitecture.svg]]
+
+* Running MPI parallel programs on a supercomputer
 
 ** Running jobs on compute nodes
 
