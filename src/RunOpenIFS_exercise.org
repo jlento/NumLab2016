@@ -235,7 +235,6 @@ url=https://raw.githubusercontent.com/jlento/NumLab2016/master/scripts
 bash <(curl -s ${url}/oifs_{env_gnu,run_acceptance}_taito.bash)
 #+END_SRC
 
-
 *** Scaling test
 
 Run the scaling test with both GNU and Intel versions of the
