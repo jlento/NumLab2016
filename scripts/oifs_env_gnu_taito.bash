@@ -8,7 +8,8 @@ module load grib-api/1.14.2
 mklopts="-c gnu_f -o gomp"
 mkltool() {
     local mode="$1"
-    local mklopts="$2"
+    shift
+    local mklopts="$@"
     local mklcmd=${MKLROOT}/tools/mkl_link_tool
     echo "$($mklcmd $mode $mklopts 2> /dev/null | tr '()' '{}')"
 }
