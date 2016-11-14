@@ -374,6 +374,8 @@ lawyer to figure out which initialization files Bash reads with
 different invocations.)
 
 #+BEGIN_SRC makefile -n :tangle ../makefile
+ROOTDIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
+SCRATCH := $(CURDIR)/build
 SHELL    = /bin/bash
 #+END_SRC
 
@@ -385,6 +387,8 @@ files(lines 5-6):
 DOCS     = Intro_slide.html         Intro_exercise.pdf \
            BuildOpenIFS_slide.html  BuildOpenIFS_exercise.pdf \
            RunOpenIFS_slide.html    RunOpenIFS_exercise.pdf
+SRC_EXT  = $(addprefix $(SCRATCH)/, \
+           $(notdir $(wildcard $(ROOTDIR)/src/*.tex $(ROOTDIR)/src/*.svg)))
 FUN_pdf  = org-latex-export-to-pdf
 FUN_html = org-reveal-export-to-html
 #+END_SRC
@@ -395,10 +399,7 @@ they are not in the current directory. You can set a special variable
 below:
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-vpath %.org  src
-vpath %.html doc
-vpath %.pdf  doc
-vpath %.bash bin
+vpath %.org  $(ROOTDIR)/src
 #+END_SRC
 
 The next block is slightly less frequently encountered multi-line
@@ -416,10 +417,18 @@ variable name ~FUN_*~ is computed, to reference the correct variable
 defined on lines 5-6.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
+define emacs_conf
+(setq org-src-preserve-indentation t)
+(add-to-list 'load-path "$(ROOTDIR)/org-reveal")
+(require 'ox-reveal)
+(setq org-reveal-root "file://$(ROOTDIR)/reveal.js")
+endef
+
 define compile
-emacs $1 --batch -u $(USER) -f $(FUN_$2) -f org-babel-tangle --kill
-rm -f $(1:.org=.tex)
-mv $(1:.org=.$2) doc/
+cp -f $1 $(SCRATCH)/
+cd $(SCRATCH); emacs $(notdir $1) -L $(CURDIR) -l emacs_conf.el --batch -f $(FUN_$2) -f org-babel-tangle --kill
+mv $(SCRATCH)/$(notdir $(1:.org=.$2)) $(CURDIR)/
+rm -f $(SCRATCH)/$(basename $(notdir $1)).*
 endef
 #+END_SRC
 
@@ -451,10 +460,19 @@ the defined command, which here refers to the multi-line variable,
 that is used as a function. A smiley is appropriate here?
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-%.html : %.org
+%.html : %.org $(SRC_EXT) emacs_conf.el | $(SCRATCH)
 	$(call compile,$<,html)
-%.pdf  : %.org
+%.pdf  : %.org $(SRC_EXT) emacs_conf.el | $(SCRATCH)
 	$(call compile,$<,pdf)
+#+END_SRC
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+$(SCRATCH) :
+	mkdir -p $@
+$(SRC_EXT) : | $(SCRATCH)
+	ln -sf $(ROOTDIR)/src/$(notdir $@) $@
+emacs_conf.el :
+	$(file >$@,$(emacs_conf))
 #+END_SRC
 
 Notice, the commands in the rule are prefixed by TAB character (even
@@ -467,7 +485,7 @@ the makefile and then re-read and execute it.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
 makefile : Intro_exercise.org
-	emacs $< --batch -u $(USER) -f org-babel-tangle --kill
+	emacs $< -q -Q --batch --eval '(setq org-src-preserve-indentation t)' -f org-babel-tangle --kill
 #+END_SRC
 
 If you try to run this makefile, it will most likely not work because
