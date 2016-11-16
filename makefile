@@ -1,47 +1,57 @@
-
 ROOTDIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
-SCRATCH := $(CURDIR)/build
 SHELL    = /bin/bash
 
-DOCS     = Intro_slide.html         Intro_exercise.pdf \
-           BuildOpenIFS_slide.html  BuildOpenIFS_exercise.pdf \
-           RunOpenIFS_slide.html    RunOpenIFS_exercise.pdf
-SRC_EXT  = $(addprefix $(SCRATCH)/, \
-           $(notdir $(wildcard $(ROOTDIR)/src/*.tex $(ROOTDIR)/src/*.svg)))
-FUN_pdf  = org-latex-export-to-pdf
-FUN_html = org-reveal-export-to-html
+HTML    := Intro_slide.html BuildOpenIFS_slide.html RunOpenIFS_slide.html
+PDF     := Intro_exercise.pdf BuildOpenIFS_exercise.pdf \
+        RunOpenIFS_exercise.pdf
+include script.list     # Defines SCRIPTS (computed from HTML and PDF)
 
-vpath %.org  $(ROOTDIR)/src
+DEPS    := $(HTML:.html=.d) $(PDF:.pdf=.d)
+SRC_EXT := $(notdir $(wildcard $(ROOTDIR)/src/*.tex $(ROOTDIR)/src/*.svg))
 
-define emacs_conf
+vpath %.org $(ROOTDIR)/src
+
+define emacs-export-conf
+(setq org-src-preserve-indentation t)
+
+;; Setup reveal.js
 (setq org-src-preserve-indentation t)
 (add-to-list 'load-path "$(ROOTDIR)/org-reveal")
 (require 'ox-reveal)
 (setq org-reveal-root "file://$(ROOTDIR)/reveal.js")
+
+;; Write the exports to current directory instead of the source directory
+(defadvice org-export-output-file-name (before org-add-export-dir activate)
+  "Modifies org-export to place exported files in a different directory"
+  (setq pub-dir (getenv "PWD")))
 endef
 
-define compile
-cp -f $1 $(SCRATCH)/
-cd $(SCRATCH); emacs $(notdir $1) -L $(CURDIR) -l emacs_conf.el --batch -f $(FUN_$2) -f org-babel-tangle --kill
-mv $(SCRATCH)/$(notdir $(1:.org=.$2)) $(CURDIR)/
-rm -f $(SCRATCH)/$(basename $(notdir $1)).*
-endef
+.PHONY : all deps clean
 
-.PHONY : all
+all : $(HTML) $(PDF) $(SCRIPTS)
 
-all : $(DOCS)
+%.html : %.org $(SRC_EXT) | emacs-export-conf.el
+	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch -f org-reveal-export-to-html --kill
 
-%.html : %.org $(SRC_EXT) emacs_conf.el | $(SCRATCH)
-	$(call compile,$<,html)
-%.pdf  : %.org $(SRC_EXT) emacs_conf.el | $(SCRATCH)
-	$(call compile,$<,pdf)
+%.pdf  : %.org $(SRC_EXT) | emacs-export-conf.el
+	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch -f org-latex-export-to-pdf --kill
 
-$(SCRATCH) :
-	mkdir -p $@
-$(SRC_EXT) : | $(SCRATCH)
-	ln -sf $(ROOTDIR)/src/$(notdir $@) $@
-emacs_conf.el :
-	$(file >$@,$(emacs_conf))
+$(SCRIPTS) :
+	emacs $< --batch --eval '(setq org-src-preserve-indentation t)' -f org-babel-tangle --kill
 
-makefile : Intro_exercise.org
-	emacs $< -q -Q --batch --eval '(setq org-src-preserve-indentation t)' -f org-babel-tangle --kill
+$(SRC_EXT) :
+	ln -sf $(ROOTDIR)/src/$@
+
+emacs-export-conf.el : $(ROOTDIR)/makefile
+	$(file >$@,$(emacs-export-conf))
+
+script.list : $(patsubst %.org,%.d,$(notdir $(wildcard $(ROOTDIR)/src/*.org)))
+	echo SCRIPTS = $$(sed 's/:.*//' $^ | uniq) > $@
+
+%.d : %.org
+	echo $$(sed -rn "s,(^#\+.* :tangle *)([^ ]+)(.*),$(dir $<)\2,;s,\.\./,,p" $< | uniq) : $(notdir $<) > $@ 
+
+include $(DEPS)
+
+clean :
+	rm -f *.d script.list *.pdf *.tex *.html emacs-export-conf.el

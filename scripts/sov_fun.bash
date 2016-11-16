@@ -1,4 +1,3 @@
-
 sov () {
     sinfo -N -h -o '%5n %T' "$@" | uniq -w 5 | awk '
       {s="?"}

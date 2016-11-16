@@ -366,31 +366,30 @@ As an example, let us have a look at the [[https://raw.githubusercontent.com/jle
 the exercise PDFs, HTML lecture slides, and extract the bash scripts,
 from the Org-mode source files.
 
-First I define the shell in which make should execute the commands. I
-choose to override the default shell ~/bin/sh~, because I want that
-each shell that make opens to read my bash initialization file
-~${HOME}/.bash_profile~. (You need to read the bash man page like a
-lawyer to figure out which initialization files Bash reads with
-different invocations.)
+First I store the directory where the makefile resides to variable
+=ROOTDIR=. This will later make the out-of-source builds possible.
+The I define the shell which make should use to execute the commands.
 
 #+BEGIN_SRC makefile -n :tangle ../makefile
 ROOTDIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
-SCRATCH := $(CURDIR)/build
 SHELL    = /bin/bash
 #+END_SRC
 
-Next, I define the files I wish to make (lines 2-4), and the Emacs
-functions that compile them from the corresponding Org-mode source
-files(lines 5-6):
+Next, I define the files that this makefile generates, the HTML
+lecture slides, PDF exercise handouts and example bash scripts. The
+list of example bash scripts is generated automatically from the input
+files (*.org), and stored in a variable =SCRIPTS=. Last, I store the
+names of the auxiliary files, LaTeX templates and some SVG figures, to
+variable =SRC_EXT=.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-DOCS     = Intro_slide.html         Intro_exercise.pdf \
-           BuildOpenIFS_slide.html  BuildOpenIFS_exercise.pdf \
-           RunOpenIFS_slide.html    RunOpenIFS_exercise.pdf
-SRC_EXT  = $(addprefix $(SCRATCH)/, \
-           $(notdir $(wildcard $(ROOTDIR)/src/*.tex $(ROOTDIR)/src/*.svg)))
-FUN_pdf  = org-latex-export-to-pdf
-FUN_html = org-reveal-export-to-html
+HTML    := Intro_slide.html BuildOpenIFS_slide.html RunOpenIFS_slide.html
+PDF     := Intro_exercise.pdf BuildOpenIFS_exercise.pdf \
+        RunOpenIFS_exercise.pdf
+include script.list     # Defines SCRIPTS (computed from HTML and PDF)
+
+DEPS    := $(HTML:.html=.d) $(PDF:.pdf=.d)
+SRC_EXT := $(notdir $(wildcard $(ROOTDIR)/src/*.tex $(ROOTDIR)/src/*.svg))
 #+END_SRC
 
 Make needs to know where to find all the different kinds of files, if
@@ -399,44 +398,36 @@ they are not in the current directory. You can set a special variable
 below:
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-vpath %.org  $(ROOTDIR)/src
+vpath %.org $(ROOTDIR)/src
 #+END_SRC
 
 The next block is slightly less frequently encountered multi-line
-definition (but I find them really neat). The first line of the block
-is the compile command, and the next two lines just remove the
-intermediate ~.tex~ files and move the compiled PDF and HTML documents
-to the proper sub-directory. A prettier solution would be to instruct
-Emacs to put the files into the right places right away, thus avoiding
-the ~rm~ and ~mv~ altogether, but I am just beginning to learn
-Emacs-Lisp myself. Consider yourselves saved.
-
-The block takes two arguments, ~$1~ and ~$2~, the name of the Emacs
-Org-mode source file and the target file suffix. Notice how the
-variable name ~FUN_*~ is computed, to reference the correct variable
-defined on lines 5-6.
+definition (but I find them really neat). Basically that contains
+emacs configuration that I use to customize org-mode's export
+functions, that ultimately transform org-documents to HTML or PDF.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-define emacs_conf
+define emacs-export-conf
+(setq org-src-preserve-indentation t)
+
+;; Setup reveal.js
 (setq org-src-preserve-indentation t)
 (add-to-list 'load-path "$(ROOTDIR)/org-reveal")
 (require 'ox-reveal)
 (setq org-reveal-root "file://$(ROOTDIR)/reveal.js")
-endef
 
-define compile
-cp -f $1 $(SCRATCH)/
-cd $(SCRATCH); emacs $(notdir $1) -L $(CURDIR) -l emacs_conf.el --batch -f $(FUN_$2) -f org-babel-tangle --kill
-mv $(SCRATCH)/$(notdir $(1:.org=.$2)) $(CURDIR)/
-rm -f $(SCRATCH)/$(basename $(notdir $1)).*
+;; Write the exports to current directory instead of the source directory
+(defadvice org-export-output-file-name (before org-add-export-dir activate)
+  "Modifies org-export to place exported files in a different directory"
+  (setq pub-dir (getenv "PWD")))
 endef
 #+END_SRC
 
 All regular targets in makefile are files by default. Special target
-~.PHONY~ tells make that ~all~ is not a file that it should make.
+~.PHONY~ tells make that =all=, =deps=, and =clean= are not files .
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-.PHONY : all
+.PHONY : all deps clean
 #+END_SRC
 
 Makefile works by reading in the whole makefile first. If the user has
@@ -448,45 +439,54 @@ or any of their dependencies have changed. /Figuring out the default
 goal is the place to start if you are reading an unfamiliar makefile./
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-all : $(DOCS)
+all : $(HTML) $(PDF) $(SCRIPTS)
 #+END_SRC
 
 In general, everything before the colon are is targets, and everything
 after it are their dependencies.
 
-The next lines define two pattern rules. Anytime we need a ~.html~ or
+The next lines define pattern rules. Anytime we need a ~.html~ or
 ~.pdf~ file, we can make it from the corresponding ~.org~ file with
-the defined command, which here refers to the multi-line variable,
-that is used as a function. A smiley is appropriate here?
+the recipe below. Instead of pattern rules we can also name the target
+files explicitly, as is done here for =$(SCRIPTS)=, =SRC_EXT=, and
+=emacs-export-conf=.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-%.html : %.org $(SRC_EXT) emacs_conf.el | $(SCRATCH)
-	$(call compile,$<,html)
-%.pdf  : %.org $(SRC_EXT) emacs_conf.el | $(SCRATCH)
-	$(call compile,$<,pdf)
+%.html : %.org $(SRC_EXT) | emacs-export-conf.el
+	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch -f org-reveal-export-to-html --kill
+
+%.pdf  : %.org $(SRC_EXT) | emacs-export-conf.el
+	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch -f org-latex-export-to-pdf --kill
+
+$(SCRIPTS) :
+	emacs $< --batch --eval '(setq org-src-preserve-indentation t)' -f org-babel-tangle --kill
+
+$(SRC_EXT) :
+	ln -sf $(ROOTDIR)/src/$@
+
+emacs-export-conf.el : $(ROOTDIR)/makefile
+	$(file >$@,$(emacs-export-conf))
+
 #+END_SRC
+
+Then some hacking to generate the list of bash scripts that are
+tangled from the org-files, and the =clean= target
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-$(SCRATCH) :
-	mkdir -p $@
-$(SRC_EXT) : | $(SCRATCH)
-	ln -sf $(ROOTDIR)/src/$(notdir $@) $@
-emacs_conf.el :
-	$(file >$@,$(emacs_conf))
+script.list : $(patsubst %.org,%.d,$(notdir $(wildcard $(ROOTDIR)/src/*.org)))
+	echo SCRIPTS = $$(sed 's/:.*//' $^ | uniq) > $@
+
+%.d : %.org
+	echo $$(sed -rn "s,(^#\+.* :tangle *)([^ ]+)(.*),$(dir $<)\2,;s,\.\./,,p" $< | uniq) : $(notdir $<) > $@ 
+
+include $(DEPS)
+
+clean :
+	rm -f *.d script.list *.pdf *.tex *.html emacs-export-conf.el
 #+END_SRC
 
-Notice, the commands in the rule are prefixed by TAB character (even
+Notice, the commands in the rules are prefixed by TAB character (even
 make is not perfect).
-
-The makefile itself is compiled from the source of this document,
-~src/Intro_exercise.org~! If there is a rule for building the
-makefile, and it needs re-building, make will automatically re-build
-the makefile and then re-read and execute it.
-
-#+BEGIN_SRC makefile +n :tangle ../makefile
-makefile : Intro_exercise.org
-	emacs $< -q -Q --batch --eval '(setq org-src-preserve-indentation t)' -f org-babel-tangle --kill
-#+END_SRC
 
 If you try to run this makefile, it will most likely not work because
 I have somewhat customized Emacs configuration. Packaging a project so
