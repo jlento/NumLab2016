@@ -375,36 +375,113 @@ ROOTDIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 SHELL    = /bin/bash
 #+END_SRC
 
-Next, I define the files that this makefile generates, the HTML
-lecture slides, PDF exercise handouts and example bash scripts. The
-list of example bash scripts is generated automatically from the input
-files (*.org), and stored in a variable =SCRIPTS=. Last, I store the
-names of the auxiliary files, LaTeX templates and some SVG figures, to
-variable =SRC_EXT=.
+Next, I define the primary target files, the HTML lecture slides and
+PDF exercise handouts, that this makefile generates from the
+corresponding Org source files.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-HTML    := Intro_slide.html BuildOpenIFS_slide.html RunOpenIFS_slide.html
-PDF     := Intro_exercise.pdf BuildOpenIFS_exercise.pdf \
+HTML := Intro_slide.html BuildOpenIFS_slide.html RunOpenIFS_slide.html
+PDF  := Intro_exercise.pdf BuildOpenIFS_exercise.pdf \
         RunOpenIFS_exercise.pdf
-include script.list     # Defines SCRIPTS (computed from HTML and PDF)
-
-DEPS    := $(HTML:.html=.d) $(PDF:.pdf=.d)
-SRC_EXT := $(notdir $(wildcard $(ROOTDIR)/src/*.tex $(ROOTDIR)/src/*.svg))
 #+END_SRC
 
 Make needs to know where to find all the different kinds of files, if
 they are not in the current directory. You can set a special variable
-~VPATH~ or use ~vpath~ directive for more fine grained control, as
-below:
+~VPATH~ or use ~vpath~ directive to add search paths.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
 vpath %.org $(ROOTDIR)/src
 #+END_SRC
 
-The next block is slightly less frequently encountered multi-line
-definition (but I find them really neat). Basically that contains
+All regular targets in makefile are files by default. Special target
+~.PHONY~ tells make that =all=, =deps=, and =clean= are not files.
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+.PHONY : all deps clean
+#+END_SRC
+
+Makefile works by reading in the whole makefile first. If the user has
+not specified a target on the command line, make chooses the first
+regular target as the main goal to make. Using phony target ~all~ as
+default target is the standard. Here we see that ~all~ depends on all
+documents, which make now proceeds to (re-)make, if they are missing,
+or any of their dependencies have changed. /Figuring out the default
+goal is the place to start if you are reading an unfamiliar makefile./
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+all : $(HTML) $(PDF)
+#+END_SRC
+
+In general, everything before the colon are is targets, and everything
+after it are their dependencies.
+
+The next lines define pattern rules. Anytime we need a ~.html~ or
+~.pdf~ file, we can make it from the corresponding ~.org~ file with
+the recipe below.
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+%.html : %.org | emacs-export-conf.el
+	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch \
+            -f org-babel-tangle \
+            -f org-reveal-export-to-html
+
+%.pdf  : %.org | emacs-export-conf.el
+	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch \
+            -f org-babel-tangle \
+            -f org-latex-export-to-pdf
+#+END_SRC
+
+So far everything has been simple. However, the Org export to HTML and
+PDF can depend on some auxiliary files, such as SVG images and LaTeX
+templates, too. Also, the examples in the Org files can be tangled to
+separate files. These dependencies can be extracted from the Org
+source files automatically, and will be stored in dependency files
+(*.d), listed in the DEPS variable.
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+DEPS = $(HTML:.html=.d) $(PDF:.pdf=.d)
+
+deps : $(DEPS)
+
+$(DEPS) : %.d : %.org
+	$(cook-deps)
+
+%.html %.pdf : %.d
+
+%.bash :
+	emacs $< --eval '(setq org-src-preserve-indentation t)' --batch \
+            -f org-babel-tangle
+
+%.tex %.svg :
+	ln -sf $(ROOTDIR)/src/$@
+
+ifneq ($(MAKECMDGOALS),clean)
+-include $(DEPS)
+endif
+#+END_SRC
+
+Some special rules...
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+$(ROOTDIR)/makefile : Intro_exercise.org
+	emacs $< --eval '(setq org-src-preserve-indentation t)' --batch \
+            -f org-babel-tangle --kill
+
+emacs-export-conf.el : $(ROOTDIR)/makefile
+	$(file >$@,$(emacs-export-conf))
+
+exercise_header.tex : graybox.tex
+	ln -sf $(ROOTDIR)/src/$@
+
+clean :
+	rm -f *.d script.list *.pdf *.svg *.tex *.html emacs-export-conf.el
+#+END_SRC
+
+And last, two multi-line variable definitions. The first contains
 emacs configuration that I use to customize org-mode's export
-functions, that ultimately transform org-documents to HTML or PDF.
+functions, saved to a file =emacs-export-conf.ef=, and the second is
+the small script that extracts the dependency information from the Org
+source files.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
 define emacs-export-conf
@@ -420,72 +497,17 @@ define emacs-export-conf
   "Modifies org-export to place exported files in a different directory"
   (setq pub-dir (getenv "PWD")))
 endef
+
+define cook-deps
+sed -rn -e 's,(^#\+.* :tangle *(\.\./)*)([^ ]+)(.*),$(ROOTDIR)/\3,p' $< \
+    | uniq | paste -sd ' ' - \
+    | sed -r 's,^.+$$,& : $(notdir $<),' > $@
+sed -rn -e 's/(.*\[[f]ile:)([^]]*)(.*)/\2/p' \
+        -e 's,(.*\\input\{)(.*\.tex)(\}.*),\2,p' $< \
+    | uniq | paste -sd ' ' - \
+    | sed -r 's,^.+$$,$(notdir $<) : &,' >> $@
+endef
 #+END_SRC
-
-All regular targets in makefile are files by default. Special target
-~.PHONY~ tells make that =all=, =deps=, and =clean= are not files .
-
-#+BEGIN_SRC makefile +n :tangle ../makefile
-.PHONY : all deps clean
-#+END_SRC
-
-Makefile works by reading in the whole makefile first. If the user has
-not specified a target on the command line, make chooses the first
-regular target as the main goal to make. Using phony target ~all~ as
-default target is the standard. Here we see that ~all~ depends on all
-documents, which make now proceeds to (re-)make, if they are missing,
-or any of their dependencies have changed. /Figuring out the default
-goal is the place to start if you are reading an unfamiliar makefile./
-
-#+BEGIN_SRC makefile +n :tangle ../makefile
-all : $(HTML) $(PDF) $(SCRIPTS)
-#+END_SRC
-
-In general, everything before the colon are is targets, and everything
-after it are their dependencies.
-
-The next lines define pattern rules. Anytime we need a ~.html~ or
-~.pdf~ file, we can make it from the corresponding ~.org~ file with
-the recipe below. Instead of pattern rules we can also name the target
-files explicitly, as is done here for =$(SCRIPTS)=, =SRC_EXT=, and
-=emacs-export-conf=.
-
-#+BEGIN_SRC makefile +n :tangle ../makefile
-%.html : %.org $(SRC_EXT) | emacs-export-conf.el
-	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch -f org-reveal-export-to-html --kill
-
-%.pdf  : %.org $(SRC_EXT) | emacs-export-conf.el
-	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch -f org-latex-export-to-pdf --kill
-
-$(SCRIPTS) :
-	emacs $< --batch --eval '(setq org-src-preserve-indentation t)' -f org-babel-tangle --kill
-
-$(SRC_EXT) :
-	ln -sf $(ROOTDIR)/src/$@
-
-emacs-export-conf.el : $(ROOTDIR)/makefile
-	$(file >$@,$(emacs-export-conf))
-
-#+END_SRC
-
-Then some hacking to generate the list of bash scripts that are
-tangled from the org-files, and the =clean= target
-
-#+BEGIN_SRC makefile +n :tangle ../makefile
-script.list : $(patsubst %.org,%.d,$(notdir $(wildcard $(ROOTDIR)/src/*.org)))
-	echo SCRIPTS = $$(sed 's/:.*//' $^ | uniq) > $@
-
-%.d : %.org
-	echo $$(sed -rn "s,(^#\+.* :tangle *)([^ ]+)(.*),$(dir $<)\2,;s,\.\./,,p" $< | uniq) : $(notdir $<) > $@ 
-
-include $(DEPS)
-
-clean :
-	rm -f *.d script.list *.pdf *.tex *.html emacs-export-conf.el
-#+END_SRC
-
-Notice, the commands in the rules are prefixed by TAB character (even
-make is not perfect).
 
 If you try to run this makefile, it will most likely not work because
 I have somewhat customized Emacs configuration. Packaging a project so

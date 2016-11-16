@@ -1,15 +1,58 @@
 ROOTDIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 SHELL    = /bin/bash
 
-HTML    := Intro_slide.html BuildOpenIFS_slide.html RunOpenIFS_slide.html
-PDF     := Intro_exercise.pdf BuildOpenIFS_exercise.pdf \
+HTML := Intro_slide.html BuildOpenIFS_slide.html RunOpenIFS_slide.html
+PDF  := Intro_exercise.pdf BuildOpenIFS_exercise.pdf \
         RunOpenIFS_exercise.pdf
-include script.list     # Defines SCRIPTS (computed from HTML and PDF)
-
-DEPS    := $(HTML:.html=.d) $(PDF:.pdf=.d)
-SRC_EXT := $(notdir $(wildcard $(ROOTDIR)/src/*.tex $(ROOTDIR)/src/*.svg))
 
 vpath %.org $(ROOTDIR)/src
+
+.PHONY : all deps clean
+
+all : $(HTML) $(PDF)
+
+%.html : %.org | emacs-export-conf.el
+	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch \
+            -f org-babel-tangle \
+            -f org-reveal-export-to-html
+
+%.pdf  : %.org | emacs-export-conf.el
+	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch \
+            -f org-babel-tangle \
+            -f org-latex-export-to-pdf
+
+DEPS = $(HTML:.html=.d) $(PDF:.pdf=.d)
+
+deps : $(DEPS)
+
+$(DEPS) : %.d : %.org
+	$(cook-deps)
+
+%.html %.pdf : %.d
+
+%.bash :
+	emacs $< --eval '(setq org-src-preserve-indentation t)' --batch \
+            -f org-babel-tangle
+
+%.tex %.svg :
+	ln -sf $(ROOTDIR)/src/$@
+
+ifneq ($(MAKECMDGOALS),clean)
+-include $(DEPS)
+endif
+
+$(ROOTDIR)/makefile : Intro_exercise.org
+	emacs $< --eval '(setq org-src-preserve-indentation t)' --batch \
+            -f org-babel-tangle --kill
+
+emacs-export-conf.el : $(ROOTDIR)/makefile
+	$(file >$@,$(emacs-export-conf))
+
+exercise_header.tex : graybox.tex
+	ln -sf $(ROOTDIR)/src/$@
+
+clean :
+	rm -f *.d script.list *.pdf *.svg *.tex *.html emacs-export-conf.el
 
 define emacs-export-conf
 (setq org-src-preserve-indentation t)
@@ -25,32 +68,12 @@ define emacs-export-conf
   (setq pub-dir (getenv "PWD")))
 endef
 
-.PHONY : all deps clean
-
-all : $(HTML) $(PDF) $(SCRIPTS)
-
-%.html : %.org $(SRC_EXT) | emacs-export-conf.el
-	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch -f org-reveal-export-to-html --kill
-
-%.pdf  : %.org $(SRC_EXT) | emacs-export-conf.el
-	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch -f org-latex-export-to-pdf --kill
-
-$(SCRIPTS) :
-	emacs $< --batch --eval '(setq org-src-preserve-indentation t)' -f org-babel-tangle --kill
-
-$(SRC_EXT) :
-	ln -sf $(ROOTDIR)/src/$@
-
-emacs-export-conf.el : $(ROOTDIR)/makefile
-	$(file >$@,$(emacs-export-conf))
-
-script.list : $(patsubst %.org,%.d,$(notdir $(wildcard $(ROOTDIR)/src/*.org)))
-	echo SCRIPTS = $$(sed 's/:.*//' $^ | uniq) > $@
-
-%.d : %.org
-	echo $$(sed -rn "s,(^#\+.* :tangle *)([^ ]+)(.*),$(dir $<)\2,;s,\.\./,,p" $< | uniq) : $(notdir $<) > $@ 
-
-include $(DEPS)
-
-clean :
-	rm -f *.d script.list *.pdf *.tex *.html emacs-export-conf.el
+define cook-deps
+sed -rn -e 's,(^#\+.* :tangle *(\.\./)*)([^ ]+)(.*),$(ROOTDIR)/\3,p' $< \
+    | uniq | paste -sd ' ' - \
+    | sed -r 's,^.+$$,& : $(notdir $<),' > $@
+sed -rn -e 's/(.*\[[f]ile:)([^]]*)(.*)/\2/p' \
+        -e 's,(.*\\input\{)(.*\.tex)(\}.*),\2,p' $< \
+    | uniq | paste -sd ' ' - \
+    | sed -r 's,^.+$$,$(notdir $<) : &,' >> $@
+endef
