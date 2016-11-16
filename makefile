@@ -15,7 +15,6 @@ define emacs-export-conf
 (setq org-src-preserve-indentation t)
 
 ;; Setup reveal.js
-(setq org-src-preserve-indentation t)
 (add-to-list 'load-path "$(ROOTDIR)/org-reveal")
 (require 'ox-reveal)
 (setq org-reveal-root "file://$(ROOTDIR)/reveal.js")
