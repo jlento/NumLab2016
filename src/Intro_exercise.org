@@ -385,6 +385,18 @@ PDF  := Intro_exercise.pdf BuildOpenIFS_exercise.pdf \
         RunOpenIFS_exercise.pdf
 #+END_SRC
 
+Next I define the emacs setup.
+
+#+BEGIN_SRC makefile +n :tangle ../makefile
+EMACS_CONF := $(ROOTDIR)/org-export.el
+ORG_REVEAL := $(ROOTDIR)/org-reveal
+REVEAL_JS  := $(ROOTDIR)/reveal.js
+
+EMACS_FLAGS = -l $(EMACS_CONF) --batch -f org-babel-tangle
+export ORG_REVEAL REVEAL_JS
+#+END_SRC
+
+
 Make needs to know where to find all the different kinds of files, if
 they are not in the current directory. You can set a special variable
 ~VPATH~ or use ~vpath~ directive to add search paths.
@@ -420,15 +432,11 @@ The next lines define pattern rules. Anytime we need a ~.html~ or
 the recipe below.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-%.html : %.org | emacs-export-conf.el
-	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch \
-            -f org-babel-tangle \
-            -f org-reveal-export-to-html
+%.html : %.org
+	emacs $< $(EMACS_FLAGS) -f org-reveal-export-to-html
 
-%.pdf  : %.org | emacs-export-conf.el
-	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch \
-            -f org-babel-tangle \
-            -f org-latex-export-to-pdf
+%.pdf  : %.org
+	emacs $< $(EMACS_FLAGS) -f org-latex-export-to-pdf
 #+END_SRC
 
 So far everything has been simple. However, the Org export to HTML and
@@ -443,14 +451,13 @@ DEPS = $(HTML:.html=.d) $(PDF:.pdf=.d)
 
 deps : $(DEPS)
 
-$(DEPS) : %.d : %.org
+%.d : %.org
 	$(cook-deps)
 
 %.html %.pdf : %.d
 
 %.bash :
-	emacs $< --eval '(setq org-src-preserve-indentation t)' --batch \
-            -f org-babel-tangle
+	emacs $< $(EMACS_FLAGS)
 
 %.tex %.svg :
 	ln -sf $(ROOTDIR)/src/$@
@@ -463,41 +470,20 @@ endif
 Some special rules...
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-$(ROOTDIR)/makefile : Intro_exercise.org
+$(ROOTDIR)/makefile : $(ROOTDIR)/Intro_exercise.org
 	emacs $< --eval '(setq org-src-preserve-indentation t)' --batch \
             -f org-babel-tangle --kill
 
-emacs-export-conf.el : $(ROOTDIR)/makefile
-	$(file >$@,$(emacs-export-conf))
-
 exercise_header.tex : graybox.tex
-	ln -sf $(ROOTDIR)/src/$@
 
 clean :
-	rm -f *.d script.list *.pdf *.svg *.tex *.html emacs-export-conf.el
+	rm -f *.d script.list *.pdf *.svg *.tex *.html
 #+END_SRC
 
-And last, two multi-line variable definitions. The first contains
-emacs configuration that I use to customize org-mode's export
-functions, saved to a file =emacs-export-conf.ef=, and the second is
-the small script that extracts the dependency information from the Org
-source files.
+And last, a multi-line variable definition, a small script that
+extracts the dependency information from the Org source files.
 
 #+BEGIN_SRC makefile +n :tangle ../makefile
-define emacs-export-conf
-(setq org-src-preserve-indentation t)
-
-;; Setup reveal.js
-(add-to-list 'load-path "$(ROOTDIR)/org-reveal")
-(require 'ox-reveal)
-(setq org-reveal-root "file://$(ROOTDIR)/reveal.js")
-
-;; Write the exports to current directory instead of the source directory
-(defadvice org-export-output-file-name (before org-add-export-dir activate)
-  "Modifies org-export to place exported files in a different directory"
-  (setq pub-dir (getenv "PWD")))
-endef
-
 define cook-deps
 sed -rn -e 's,(^#\+.* :tangle *(\.\./)*)([^ ]+)(.*),$(ROOTDIR)/\3,p' $< \
     | uniq | paste -sd ' ' - \

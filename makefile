@@ -5,34 +5,36 @@ HTML := Intro_slide.html BuildOpenIFS_slide.html RunOpenIFS_slide.html
 PDF  := Intro_exercise.pdf BuildOpenIFS_exercise.pdf \
         RunOpenIFS_exercise.pdf
 
+EMACS_CONF := $(ROOTDIR)/org-export.el
+ORG_REVEAL := $(ROOTDIR)/org-reveal
+REVEAL_JS  := $(ROOTDIR)/reveal.js
+
+EMACS_FLAGS = -l $(EMACS_CONF) --batch -f org-babel-tangle
+export ORG_REVEAL REVEAL_JS
+
 vpath %.org $(ROOTDIR)/src
 
 .PHONY : all deps clean
 
 all : $(HTML) $(PDF)
 
-%.html : %.org | emacs-export-conf.el
-	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch \
-            -f org-babel-tangle \
-            -f org-reveal-export-to-html
+%.html : %.org
+	emacs $< $(EMACS_FLAGS) -f org-reveal-export-to-html
 
-%.pdf  : %.org | emacs-export-conf.el
-	emacs $< -L $(CURDIR) -l emacs-export-conf.el --batch \
-            -f org-babel-tangle \
-            -f org-latex-export-to-pdf
+%.pdf  : %.org
+	emacs $< $(EMACS_FLAGS) -f org-latex-export-to-pdf
 
 DEPS = $(HTML:.html=.d) $(PDF:.pdf=.d)
 
 deps : $(DEPS)
 
-$(DEPS) : %.d : %.org
+%.d : %.org
 	$(cook-deps)
 
 %.html %.pdf : %.d
 
 %.bash :
-	emacs $< --eval '(setq org-src-preserve-indentation t)' --batch \
-            -f org-babel-tangle
+	emacs $< $(EMACS_FLAGS)
 
 %.tex %.svg :
 	ln -sf $(ROOTDIR)/src/$@
@@ -41,32 +43,14 @@ ifneq ($(MAKECMDGOALS),clean)
 -include $(DEPS)
 endif
 
-$(ROOTDIR)/makefile : Intro_exercise.org
+$(ROOTDIR)/makefile : $(ROOTDIR)/Intro_exercise.org
 	emacs $< --eval '(setq org-src-preserve-indentation t)' --batch \
             -f org-babel-tangle --kill
 
-emacs-export-conf.el : $(ROOTDIR)/makefile
-	$(file >$@,$(emacs-export-conf))
-
 exercise_header.tex : graybox.tex
-	ln -sf $(ROOTDIR)/src/$@
 
 clean :
-	rm -f *.d script.list *.pdf *.svg *.tex *.html emacs-export-conf.el
-
-define emacs-export-conf
-(setq org-src-preserve-indentation t)
-
-;; Setup reveal.js
-(add-to-list 'load-path "$(ROOTDIR)/org-reveal")
-(require 'ox-reveal)
-(setq org-reveal-root "file://$(ROOTDIR)/reveal.js")
-
-;; Write the exports to current directory instead of the source directory
-(defadvice org-export-output-file-name (before org-add-export-dir activate)
-  "Modifies org-export to place exported files in a different directory"
-  (setq pub-dir (getenv "PWD")))
-endef
+	rm -f *.d script.list *.pdf *.svg *.tex *.html
 
 define cook-deps
 sed -rn -e 's,(^#\+.* :tangle *(\.\./)*)([^ ]+)(.*),$(ROOTDIR)/\3,p' $< \
